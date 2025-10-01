@@ -73,6 +73,7 @@ export const Live2D = memo(({ isPet }: Live2DProps): JSX.Element => {
         style={{
           width: "100%",
           height: "100%",
+          touchAction: "none",
           pointerEvents: isPet && forceIgnoreMouse ? "none" : "auto",
           display: "block",
         }}

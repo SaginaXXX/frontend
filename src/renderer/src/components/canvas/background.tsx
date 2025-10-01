@@ -27,7 +27,9 @@ const Background = memo(({ children }: { children?: React.ReactNode }) => {
   }, [backgroundStream]);
 
   return (
-    <Box {...canvasStyles.background.container}>
+    <Box
+      {...canvasStyles.background.container}
+    >
       {useCameraBackground ? (
         <video
           ref={videoRef}
@@ -38,6 +40,7 @@ const Background = memo(({ children }: { children?: React.ReactNode }) => {
             ...canvasStyles.background.video,
             display: isBackgroundStreaming ? 'block' : 'none',
             transform: 'scaleX(-1)',
+            pointerEvents: 'none',
           }}
         />
       ) : (
@@ -47,6 +50,7 @@ const Background = memo(({ children }: { children?: React.ReactNode }) => {
             src={backgroundUrl}
             alt=""
             onError={() => setBgLoadOk(false)}
+            style={{ pointerEvents: 'none' }}
           />
         ) : null
       )}

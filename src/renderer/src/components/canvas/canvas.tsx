@@ -7,7 +7,9 @@ import { canvasStyles } from './canvas-styles';
 function Canvas(): JSX.Element {
   return (
     <Background>
-      <Box {...canvasStyles.canvas.container}>
+      <Box
+        {...canvasStyles.canvas.container}
+      >
         {/* Force remount Live2D when model url changes to ensure switch takes effect */}
         <Live2D isPet={false} />
         <Subtitle />

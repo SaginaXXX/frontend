@@ -1,5 +1,5 @@
 import { Box, Text } from '@chakra-ui/react';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState, useRef } from 'react';
 import { canvasStyles } from './canvas-styles';
 import { useSubtitleDisplay } from '@/hooks/canvas/use-subtitle-display';
 import { useChatStore, useAppStore } from '@/store';
@@ -29,6 +29,36 @@ const Subtitle = memo((): JSX.Element | null => {
     componentId: 'canvas-subtitle',
     baseTransform: 'translate(-50%, -50%)',
   });
+
+  // Hold Shift (or Alt) to enable dragging/interaction for subtitle; otherwise click-through to Live2D
+  const [dragMode, setDragMode] = useState(false);
+  const dragPressedRef = useRef(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === 'Alt') {
+        dragPressedRef.current = true;
+        setDragMode(true);
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === 'Alt') {
+        dragPressedRef.current = false;
+        setDragMode(false);
+      }
+    };
+    const onBlur = () => { dragPressedRef.current = false; setDragMode(false); };
+    const onMouseUp = () => { if (!dragPressedRef.current) setDragMode(false); };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('mouseup', onMouseUp, true);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('mouseup', onMouseUp, true);
+    };
+  }, []);
 
   if (!isLoaded || !subtitleText || !showSubtitle) return null;
 
@@ -67,17 +97,25 @@ const Subtitle = memo((): JSX.Element | null => {
   }, [appConfig?.subtitle?.textColor]);
 
   return (
-    <Box
-      ref={elementRef}
-      {...canvasStyles.subtitle.container}
-      cursor={isDragging ? 'grabbing' : 'grab'}
-      transition={isDragging ? 'none' : 'transform 0.1s ease'}
-      onMouseDown={handleMouseDown}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      style={bgStyle}
-    >
-      <SubtitleText text={subtitleText} style={textStyle} />
+    // 外层容器始终点穿，避免覆盖 Live2D；真正可交互的是内层背景框
+    <Box {...canvasStyles.subtitle.container} style={{ pointerEvents: 'none' as any }}>
+      <Box
+        ref={elementRef}
+        // 仅在按住 Shift/Alt 时允许交互与拖拽
+        style={{
+          ...bgStyle,
+          pointerEvents: dragMode ? 'auto' as any : 'none',
+        }}
+        cursor={dragMode ? (isDragging ? 'grabbing' : 'grab') : 'default'}
+        transition={isDragging ? 'none' : 'transform 0.1s ease'}
+        onMouseDown={dragMode ? handleMouseDown : undefined}
+        onMouseEnter={dragMode ? handleMouseEnter : undefined}
+        onMouseLeave={dragMode ? handleMouseLeave : undefined}
+        // 兜底：鼠标抬起后若未按快捷键，关闭拖拽模式
+        onMouseUp={() => { if (!dragPressedRef.current) setDragMode(false); }}
+      >
+        <SubtitleText text={subtitleText} style={{ ...textStyle, pointerEvents: dragMode ? 'auto' : 'none' }} />
+      </Box>
     </Box>
   );
 });

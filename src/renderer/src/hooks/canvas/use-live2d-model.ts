@@ -105,6 +105,27 @@ export const useLive2DModel = ({
         }
       });
 
+      // Ensure event system picks events from our canvas
+      try {
+        // @ts-ignore
+        app.view.style.touchAction = 'none';
+        // @ts-ignore
+        app.view.style.pointerEvents = 'auto';
+      } catch {}
+
+      // Enable stage to receive and dispatch pointer events to children
+      try {
+        // @ts-ignore
+        app.stage.eventMode = 'static';
+        // @ts-ignore
+        app.stage.interactive = true;
+        // @ts-ignore
+        app.stage.interactiveChildren = true;
+        app.stage.hitArea = new PIXI.Rectangle(0, 0, app.renderer.width, app.renderer.height);
+      } catch {}
+
+      // Event system setup complete
+
       appRef.current = app;
     }
 
@@ -132,10 +153,13 @@ export const useLive2DModel = ({
       setCurrentModel(model);
       appRef.current.stage.addChild(model);
 
-      // Pixi v7: interactive deprecated, use eventMode
+      // Pixi v7: use eventMode; ensure interactive flag for compatibility
       // @ts-ignore - eventMode exists in PIXI v7
-      (model as any).eventMode = 'dynamic';
-      model.cursor = "pointer";
+      (model as any).eventMode = 'static'; // static improves hit test stability for drag
+      // @ts-ignore
+      (model as any).interactive = true;
+      model.cursor = "grab";
+
       setIsModelReady(true);
     },
     [setCurrentModel],
@@ -160,8 +184,6 @@ export const useLive2DModel = ({
     if (!modelInfo?.url || !appRef.current) return;
 
     if (loadingRef.current) return; // Prevent multiple simultaneous loads
-
-    console.log("Loading model:", modelInfo.url);
 
     try {
       loadingRef.current = true;
@@ -219,10 +241,16 @@ export const useLive2DModel = ({
         return;
       }
 
-      // Enable interactions
+      // Enable interactions and expand hit area to the model's bounding box
       // @ts-ignore
       (model as any).eventMode = 'dynamic';
       model.cursor = "pointer";
+      try {
+        const lb = model.getLocalBounds();
+        model.hitArea = new PIXI.Rectangle(lb.x, lb.y, lb.width, lb.height);
+      } catch (_) {
+        // Fallback: no-op if bounds not ready yet
+      }
 
       let dragging = false;
       let pointerX = 0;
@@ -247,16 +275,28 @@ export const useLive2DModel = ({
         });
       }
 
-      model.on("pointerdown", (e) => {
-        if (e.button === 0) {
+      model.on("pointerdown", (e: any) => {
+        try { e.stopPropagation?.(); } catch {}
+        // Be robust across PIXI versions and input types (mouse/touch/pen)
+        const isPrimaryPointer =
+          e?.button === 0 ||
+          e?.buttons === 1 ||
+          e?.data?.originalEvent?.button === 0 ||
+          e?.data?.originalEvent?.buttons === 1 ||
+          e?.pointerType === "touch" ||
+          e?.data?.originalEvent?.pointerType === "touch";
+
+        if (isPrimaryPointer) {
           dragging = true;
           isTap = true;
           pointerX = e.global.x - model.x;
           pointerY = e.global.y - model.y;
+          model.cursor = "grabbing";
         }
       });
 
       model.on("pointermove", (e) => {
+        try { (e as any).stopPropagation?.(); } catch {}
         if (dragging) {
           const newX = e.global.x - pointerX;
           const newY = e.global.y - pointerY;
@@ -273,8 +313,10 @@ export const useLive2DModel = ({
       });
 
       model.on("pointerup", (e) => {
+        try { (e as any).stopPropagation?.(); } catch {}
         if (dragging) {
           dragging = false;
+          model.cursor = "grab";
           if (isTap) {
             handleTapMotion(model, e.global.x, e.global.y);
           }
@@ -283,6 +325,7 @@ export const useLive2DModel = ({
 
       model.on("pointerupoutside", () => {
         dragging = false;
+        model.cursor = "grab";
       });
     },
     [isPet, forceIgnoreMouse],
@@ -292,7 +335,6 @@ export const useLive2DModel = ({
     (model: Live2DModel, x: number, y: number) => {
       if (!modelInfo?.tapMotions) return;
 
-      console.log("handleTapMotion", modelInfo?.tapMotions);
       // Convert global coordinates to model's local coordinates
       const localPos = model.toLocal(new PIXI.Point(x, y));
       const hitAreas = model.hitTest(localPos.x, localPos.y);
@@ -300,7 +342,6 @@ export const useLive2DModel = ({
       const foundMotion = hitAreas.find((area) => {
         const motionGroup = modelInfo?.tapMotions?.[area];
         if (motionGroup) {
-          console.log(`Found motion group for area ${area}:`, motionGroup);
           playRandomMotion(model, motionGroup);
           return true;
         }
@@ -318,7 +359,6 @@ export const useLive2DModel = ({
   // Reset expression when AI state changes to IDLE (like finishing a conversation)
   useEffect(() => {
     if (aiState === 'idle') {
-      console.log("defaultEmotion: ", modelInfo?.defaultEmotion);
       if (modelInfo?.defaultEmotion) {
         modelRef.current?.internalModel.motionManager.expressionManager?.setExpression(
           modelInfo.defaultEmotion,
@@ -374,9 +414,6 @@ const playRandomMotion = (model: Live2DModel, motionGroup: MotionWeightMap) => {
         ? MotionPriority.NORMAL
         : MotionPriority.FORCE;
 
-      console.log(
-        `Playing weighted motion: ${motion} (weight: ${weight}/${totalWeight}, priority: ${priority})`,
-      );
       model.motion(motion, undefined, priority);
       return true;
     }

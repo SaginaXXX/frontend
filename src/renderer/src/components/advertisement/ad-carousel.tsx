@@ -507,7 +507,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
   // ✅ currentAd 变量已不需要，因为移除了叠加层显示
 
   return (
-    <div className="ad-carousel-overlay">
+    <div className="ad-carousel-overlay" style={{ pointerEvents: 'none' }}>
       {isLoading ? (
         <div className="ad-loading">
           <div className="loading-spinner"></div>
@@ -523,7 +523,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
           </div>
         </div>
       ) : (
-        <div className="ad-player-container">
+    <div className="ad-player-container" style={{ pointerEvents: 'none' }}>
           <video
             ref={videoRef}
             className="ad-video"
@@ -537,8 +537,8 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
             onPlay={undefined}
             onPause={undefined}
             onTimeUpdate={undefined}
-            style={{ objectFit: fitMode, backgroundColor: '#000' }}
-            controls
+            style={{ objectFit: fitMode, backgroundColor: '#000', pointerEvents: 'none' }}
+            controls={false}
           >
             您的浏览器不支持视频播放。
           </video>
