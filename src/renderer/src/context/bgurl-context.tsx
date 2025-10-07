@@ -1,7 +1,6 @@
 import {
   createContext, useMemo, useContext, useCallback,
 } from 'react';
-import { useLocalStorage } from '@/hooks/utils/use-local-storage';
 import { useWebSocket } from './websocket-context';
 import { useMediaStore } from '@/store';
 
@@ -42,18 +41,20 @@ export function BgUrlProvider({ children }: { children: React.ReactNode }) {
   const { baseUrl } = useWebSocket();
   const DEFAULT_BACKGROUND = `${baseUrl}/bg/ceiling-window-room-night.jpeg`;
 
-  // Local storage for persistent background URL
-  const [backgroundUrl, setBackgroundUrl] = useLocalStorage<string>(
-    'backgroundUrl',
-    DEFAULT_BACKGROUND,
-  );
-
+  // ✅ 从 Zustand Store 读取所有背景状态（单一数据源）
   const {
+    backgroundUrl,
     backgroundFiles,
-    setBackgroundFiles,
     useCameraBackground,
+    setBackgroundFiles,
     setUseCameraBackground,
+    updateMediaState,
   } = useMediaStore();
+
+  // ✅ 使用 Store 的方法设置背景 URL
+  const setBackgroundUrl = useCallback((url: string) => {
+    updateMediaState({ backgroundUrl: url });
+  }, [updateMediaState]);
 
   // Reset background to default
   const resetBackground = useCallback(() => {

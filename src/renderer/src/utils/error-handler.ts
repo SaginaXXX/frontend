@@ -28,9 +28,9 @@ export interface AppError {
  * 错误恢复策略
  */
 export interface RecoveryStrategy {
-  attempt: () => Promise<void> | void;
-  maxRetries: number;
-  retryDelay: number;
+  attempt: () => Promise<void> | void; // 尝试恢复
+  maxRetries: number; // 最大重试次数
+  retryDelay: number; // 重试延迟
 }
 
 /**

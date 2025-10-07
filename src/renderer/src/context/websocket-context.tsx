@@ -1,7 +1,7 @@
 /* eslint-disable react/jsx-no-constructed-context-values */
 import React, { useContext, useCallback, useEffect } from 'react';
 import { wsService } from '@/services/websocket-service';
-import { useLocalStorage } from '@/hooks/utils/use-local-storage';
+import { useConfigStore } from '@/store';
 import { getServerConfig } from '@/utils/env-config';
 
 // 动态获取后端服务地址（优先 127.0.0.1:12393，或由环境变量/自动发现提供）
@@ -59,26 +59,35 @@ export const defaultBaseUrl = DEFAULT_BASE_URL;
 
 // ✅ 修复：使用箭头函数导出，符合 Fast Refresh 规范
 export const WebSocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [wsUrl, setWsUrl] = useLocalStorage('wsUrl', DEFAULT_WS_URL);
-  const [baseUrl, setBaseUrl] = useLocalStorage('baseUrl', DEFAULT_BASE_URL);
+  // ✅ 从 Zustand Store 读取配置（单一数据源）
+  const { wsUrl, baseUrl, updateNetworkConfig } = useConfigStore();
 
-  // 如果本地缓存的是旧地址（如 3001/3000），在启动时回退到默认地址 12393
+  // ✅ 检测并修正旧配置（只在挂载时运行一次）
   useEffect(() => {
-    const shouldResetWs = /:(3000|3001)(?:\b|\/)/.test(wsUrl) || wsUrl.endsWith('/client-ws') === false;
-    const shouldResetBase = /:(3000|3001)(?:\b|\/)/.test(baseUrl);
-    if (shouldResetWs) {
-      setWsUrl(DEFAULT_WS_URL);
-    }
-    if (shouldResetBase) {
-      setBaseUrl(DEFAULT_BASE_URL);
+    const shouldResetWs = wsUrl && (/:(3000|3001)(?:\b|\/)/.test(wsUrl) || !wsUrl.endsWith('/client-ws'));
+    const shouldResetBase = baseUrl && /:(3000|3001)(?:\b|\/)/.test(baseUrl);
+    
+    if (shouldResetWs || shouldResetBase) {
+      const defaultConfig = getServerConfig();
+      console.log('🔄 检测到旧配置，重置为默认地址:', defaultConfig);
+      updateNetworkConfig({
+        wsUrl: shouldResetWs ? defaultConfig.wsUrl : wsUrl,
+        baseUrl: shouldResetBase ? defaultConfig.baseUrl : baseUrl
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ 设置 WebSocket URL
   const handleSetWsUrl = useCallback((url: string) => {
-    setWsUrl(url);
+    updateNetworkConfig({ wsUrl: url });
     wsService.connect(url);
-  }, [setWsUrl]);
+  }, [updateNetworkConfig]);
+
+  // ✅ 设置 Base URL
+  const handleSetBaseUrl = useCallback((url: string) => {
+    updateNetworkConfig({ baseUrl: url });
+  }, [updateNetworkConfig]);
 
   const value = {
     sendMessage: wsService.sendMessage.bind(wsService),
@@ -87,7 +96,7 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
     wsUrl,
     setWsUrl: handleSetWsUrl,
     baseUrl,
-    setBaseUrl,
+    setBaseUrl: handleSetBaseUrl,
   };
 
   return (

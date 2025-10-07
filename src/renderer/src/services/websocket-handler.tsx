@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from 'react';
 import { wsService, MessageEvent } from '@/services/websocket-service';
 import {
-  WebSocketContext, HistoryInfo, defaultWsUrl, defaultBaseUrl,
+  WebSocketContext, HistoryInfo,
 } from '@/context/websocket-context';
 import { ModelInfo, useLive2DConfig } from '@/context/live2d-config-context';
 import { audioTaskQueue } from '@/utils/task-queue';
@@ -14,15 +14,14 @@ import { useConfig } from '@/context/character-config-context';
 import { useChatHistory } from '@/context/chat-history-context';
 import { toaster } from '@/components/ui/toaster';
 import { useVAD } from '@/context/vad-context';
-import { useLocalStorage } from '@/hooks/utils/use-local-storage';
 import { useGroup } from '@/context/group-context';
 import { useInterrupt } from '@/hooks/utils/use-interrupt';
-import { useMediaStore, useChatStore, useAiStore, useAppStore } from '@/store';
+import { useMediaStore, useChatStore, useAiStore, useAppStore, useConfigStore } from '@/store';
 
 const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
   const [wsState, setWsState] = useState<string>('CLOSED');
-  const [wsUrl, setWsUrl] = useLocalStorage<string>('wsUrl', defaultWsUrl);
-  const [baseUrl, setBaseUrl] = useLocalStorage<string>('baseUrl', defaultBaseUrl);
+  // ✅ 从 Zustand Store 读取配置（单一数据源）
+  const { wsUrl, baseUrl, updateNetworkConfig } = useConfigStore();
   const baseUrlRef = useRef(baseUrl);
   const { status: aiStatus, setAiState } = useAiStore();
   const setBackendSynthComplete = useAppStore((s) => s.setBackendSynthComplete);
@@ -417,32 +416,68 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
+  // 分离连接管理和订阅管理，确保正确清理
   useEffect(() => {
+    console.log('🔌 WebSocketHandler: 初始化WebSocket连接', wsUrl);
     wsService.connect(wsUrl);
+    
     return () => {
+      console.log('🔌 WebSocketHandler: 组件卸载，断开WebSocket连接');
       // 组件卸载时主动断开连接，避免悬挂的WebSocket
       wsService.disconnect();
     };
   }, [wsUrl]);
 
   useEffect(() => {
+    console.log('📡 WebSocketHandler: 设置订阅监听器');
     const stateSubscription = wsService.onStateChange(setWsState);
     const messageSubscription = wsService.onMessage(handleWebSocketMessage);
+    
+    // 开发环境下监控订阅数量
+    const monitorInterval = process.env.NODE_ENV === 'development' 
+      ? setInterval(() => {
+          const counts = wsService.getSubscriptionCount();
+          console.debug('📊 订阅监控:', counts);
+          if (counts.message > 2 || counts.state > 2) {
+            console.warn('⚠️  检测到订阅泄漏！订阅数量异常:', counts);
+          }
+        }, 30000) // 每30秒检查一次
+      : null;
+    
+    // ✅ 统一的清理函数，避免条件分支
     return () => {
+      // 清理监控定时器
+      if (monitorInterval) {
+        clearInterval(monitorInterval);
+      }
+      
+      console.log('📡 WebSocketHandler: 清理订阅监听器');
       stateSubscription.unsubscribe();
       messageSubscription.unsubscribe();
+      
+      // 开发环境下检查最终订阅数量
+      if (process.env.NODE_ENV === 'development') {
+        const finalCounts = wsService.getSubscriptionCount();
+        console.log('📊 清理后订阅数量:', finalCounts);
+      }
     };
-  }, [wsUrl, handleWebSocketMessage]);
+  }, [handleWebSocketMessage]); // 移除 wsUrl 依赖，避免 URL 变化时重复订阅
 
+  // ✅ Context value - 使用 Store 的 updateNetworkConfig 更新配置
   const webSocketContextValue = useMemo(() => ({
     sendMessage: wsService.sendMessage.bind(wsService),
     wsState,
     reconnect: () => wsService.connect(wsUrl),
     wsUrl,
-    setWsUrl,
+    setWsUrl: (url: string) => {
+      updateNetworkConfig({ wsUrl: url });
+      wsService.connect(url);
+    },
     baseUrl,
-    setBaseUrl,
-  }), [wsState, wsUrl, baseUrl]);
+    setBaseUrl: (url: string) => {
+      updateNetworkConfig({ baseUrl: url });
+    },
+  }), [wsState, wsUrl, baseUrl, updateNetworkConfig]);
 
   return (
     <WebSocketContext.Provider value={webSocketContextValue}>

@@ -71,6 +71,7 @@ export interface MediaState {
   autoCloseDelay: number;
 }
 
+// 聊天相关
 export interface ChatState {
   messages: any[];
   historyList: any[];
@@ -129,6 +130,9 @@ export interface AppStore {
   // VAD管理
   updateVADSettings: (settings: Partial<VADState['settings']>) => void;
   setMicState: (micOn: boolean) => void;
+  setAutoStopMic: (value: boolean) => void;
+  setAutoStartMicOn: (value: boolean) => void;
+  setAutoStartMicOnConvEnd: (value: boolean) => void;
   
   // 媒体管理
   setCurrentModel: (model: any) => void;
@@ -239,12 +243,12 @@ const initialChatState: ChatState = {
 };
 
 const initialConfigState: ConfigurationState = {
-  modelInfo: null,
-  characterConfig: null,
-  wsUrl: '',
-  baseUrl: '',
-  wsState: 'CLOSED',
-  appConfig: {},
+  modelInfo: null, // 模型信息
+  characterConfig: null, // 角色配置
+  wsUrl: 'ws://127.0.0.1:12393/client-ws', // ✅ WebSocket URL - 默认值，将被 persist 或初始化覆盖
+  baseUrl: 'http://127.0.0.1:12393', // ✅ Base URL - 默认值，将被 persist 或初始化覆盖
+  wsState: 'CLOSED', // WebSocket状态
+  appConfig: {}, // 应用配置
 };
 
 const initialProactiveState: ProactiveSpeakState = {
@@ -310,6 +314,24 @@ export const useAppStore = create<AppStore>()(
           setMicState: (micOn) => {
             set((draft) => {
               draft.vad.micOn = micOn;
+            });
+          },
+
+          setAutoStopMic: (value) => {
+            set((draft) => {
+              draft.vad.autoStopMic = value;
+            });
+          },
+
+          setAutoStartMicOn: (value) => {
+            set((draft) => {
+              draft.vad.autoStartMicOn = value;
+            });
+          },
+
+          setAutoStartMicOnConvEnd: (value) => {
+            set((draft) => {
+              draft.vad.autoStartMicOnConvEnd = value;
             });
           },
 
@@ -603,10 +625,26 @@ export const useAiStore = () => {
 export const useVADStore = () => {
   const micOn = useAppStore((s) => s.vad.micOn);
   const autoStopMic = useAppStore((s) => s.vad.autoStopMic);
+  const autoStartMicOn = useAppStore((s) => s.vad.autoStartMicOn);
+  const autoStartMicOnConvEnd = useAppStore((s) => s.vad.autoStartMicOnConvEnd);
   const settings = useAppStore((s) => s.vad.settings);
   const setMicState = useAppStore((s) => s.setMicState);
   const updateVADSettings = useAppStore((s) => s.updateVADSettings);
-  return { micOn, autoStopMic, settings, setMicState, updateVADSettings };
+  const setAutoStopMic = useAppStore((s) => s.setAutoStopMic);
+  const setAutoStartMicOn = useAppStore((s) => s.setAutoStartMicOn);
+  const setAutoStartMicOnConvEnd = useAppStore((s) => s.setAutoStartMicOnConvEnd);
+  return { 
+    micOn, 
+    autoStopMic, 
+    autoStartMicOn, 
+    autoStartMicOnConvEnd, 
+    settings, 
+    setMicState, 
+    updateVADSettings,
+    setAutoStopMic,
+    setAutoStartMicOn,
+    setAutoStartMicOnConvEnd,
+  };
 };
 
 // 媒体状态选择器 (重命名避免与Context版本冲突)

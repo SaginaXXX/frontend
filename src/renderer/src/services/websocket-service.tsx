@@ -111,6 +111,9 @@ class WebSocketService {
 
   private lastHeartbeatAckTs = 0;
 
+  // 延迟连接的定时器，用于在旧连接清理后重连
+  private delayedConnectTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Queue user/control messages while WS is not OPEN
   private outbox: object[] = [];
 
@@ -184,11 +187,35 @@ class WebSocketService {
   }
 
   connect(url: string) {
-    if (this.ws?.readyState === WebSocket.CONNECTING ||
-        this.ws?.readyState === WebSocket.OPEN) {
-      this.disconnect();
+    // 清理任何待处理的延迟连接
+    if (this.delayedConnectTimer) {
+      clearTimeout(this.delayedConnectTimer);
+      this.delayedConnectTimer = null;
     }
 
+    // 如果已经连接到相同的URL且连接正常，不重复连接
+    if (this.lastUrl === url && 
+        (this.ws?.readyState === WebSocket.CONNECTING || this.ws?.readyState === WebSocket.OPEN)) {
+      console.warn('🔄 WS already connecting/connected to', url, '- skipping duplicate connect');
+      return;
+    }
+
+    // 如果有旧连接，先彻底清理
+    if (this.ws) {
+      console.info('🔄 WS closing existing connection before reconnect');
+      this.disconnect();
+      // 给一个短暂的延迟确保旧连接完全关闭
+      this.delayedConnectTimer = setTimeout(() => {
+        this.delayedConnectTimer = null;
+        this._doConnect(url);
+      }, 100);
+      return;
+    }
+
+    this._doConnect(url);
+  }
+
+  private _doConnect(url: string) {
     try {
       this.shouldReconnect = true;
       this.lastUrl = url;
@@ -297,22 +324,69 @@ class WebSocketService {
   }
 
   onMessage(callback: (message: MessageEvent) => void) {
-    return this.messageSubject.subscribe(callback);
+    const subscription = this.messageSubject.subscribe(callback);
+    console.debug('📡 新消息订阅已创建');
+    return subscription;
   }
 
   onStateChange(callback: (state: 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED') => void) {
-    return this.stateSubject.subscribe(callback);
+    const subscription = this.stateSubject.subscribe(callback);
+    console.debug('📡 新状态订阅已创建');
+    return subscription;
+  }
+  
+  // 获取订阅数量用于调试
+  getSubscriptionCount() {
+    return {
+      message: this.messageSubject.observers.length,
+      state: this.stateSubject.observers.length,
+    };
   }
 
   disconnect() {
+    console.info('🔚 WS manual disconnect - cleaning up all resources');
     this.shouldReconnect = false;
     this.stopHeartbeat();
+    
+    // 清理重连定时器
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    try { console.info('🔚 WS manual disconnect'); this.ws?.close(); } catch {}
-    this.ws = null;
+    
+    // 清理延迟连接定时器
+    if (this.delayedConnectTimer) {
+      clearTimeout(this.delayedConnectTimer);
+      this.delayedConnectTimer = null;
+    }
+    
+    // 清理WebSocket连接
+    if (this.ws) {
+      try {
+        // 移除所有事件监听器，防止触发额外的重连
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        
+        if (this.ws.readyState === WebSocket.OPEN || 
+            this.ws.readyState === WebSocket.CONNECTING) {
+          this.ws.close();
+        }
+      } catch (e) {
+        console.warn('Error closing WebSocket:', e);
+      }
+      this.ws = null;
+    }
+    
+    // 清空待发送消息队列
+    this.outbox = [];
+    
+    // 更新状态
+    this.currentState = 'CLOSED';
+    this.stateSubject.next('CLOSED');
+    
+    console.info('✅ WS disconnect完成 - 所有资源已清理');
   }
 
   getCurrentState() {
