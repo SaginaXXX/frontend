@@ -9,6 +9,31 @@ import { immer } from 'zustand/middleware/immer';
 // import { resourceManager } from '@/utils/resource-manager';
 // import { errorHandler } from '@/utils/error-handler';
 
+// ✅ 动态获取环境配置（避免在部署环境使用硬编码的本地地址）
+function getInitialServerConfig() {
+  try {
+    // 检测当前环境
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      // HTTPS 环境：使用同源 WSS
+      const host = window.location.host;
+      return {
+        wsUrl: `wss://${host}/client-ws`,
+        baseUrl: `https://${host}`
+      };
+    }
+  } catch (e) {
+    console.warn('⚠️ 环境检测失败，使用默认配置');
+  }
+  
+  // 默认：开发环境本地地址
+  return {
+    wsUrl: 'ws://127.0.0.1:12393/client-ws',
+    baseUrl: 'http://127.0.0.1:12393'
+  };
+}
+
+const initialServerConfig = getInitialServerConfig();
+
 // =========================
 // 状态类型定义
 // =========================
@@ -245,8 +270,8 @@ const initialChatState: ChatState = {
 const initialConfigState: ConfigurationState = {
   modelInfo: null, // 模型信息
   characterConfig: null, // 角色配置
-  wsUrl: 'ws://127.0.0.1:12393/client-ws', // ✅ WebSocket URL - 默认值，将被 persist 或初始化覆盖
-  baseUrl: 'http://127.0.0.1:12393', // ✅ Base URL - 默认值，将被 persist 或初始化覆盖
+  wsUrl: initialServerConfig.wsUrl, // ✅ WebSocket URL - 根据环境自动检测
+  baseUrl: initialServerConfig.baseUrl, // ✅ Base URL - 根据环境自动检测
   wsState: 'CLOSED', // WebSocket状态
   appConfig: {}, // 应用配置
 };
@@ -594,6 +619,35 @@ export const useAppStore = create<AppStore>()(
             appConfig: state.config.appConfig,
           },
         }),
+        // ✅ 智能合并：HTTPS 环境下忽略 localStorage 中的本地地址
+        merge: (persistedState: any, currentState: any) => {
+          const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+          
+          // 检测 localStorage 中是否有本地地址（127.0.0.1 或 localhost）
+          const hasLocalAddress = persistedState?.config?.wsUrl && 
+            /127\.0\.0\.1|localhost/i.test(persistedState.config.wsUrl);
+          
+          // HTTPS 环境下，如果 localStorage 存的是本地地址，忽略它
+          if (isHttps && hasLocalAddress) {
+            console.log('🔒 检测到 HTTPS 环境，忽略 localStorage 中的本地地址配置');
+            return {
+              ...currentState,
+              ...persistedState,
+              config: {
+                ...persistedState.config,
+                // 使用环境检测的值，而不是 localStorage 的本地地址
+                wsUrl: currentState.config.wsUrl,
+                baseUrl: currentState.config.baseUrl,
+              },
+            };
+          }
+          
+          // 其他情况：正常合并
+          return {
+            ...currentState,
+            ...persistedState,
+          };
+        },
       }
     ),
     {
