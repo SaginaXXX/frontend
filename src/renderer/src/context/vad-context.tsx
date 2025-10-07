@@ -6,8 +6,7 @@ import {
 import { useInterrupt } from '@/components/canvas/live2d';
 import { audioTaskQueue } from '@/utils/task-queue';
 import { useSendAudio } from '@/hooks/utils/use-send-audio';
-import { useAiStore, useChatStore } from '@/store';
-import { useLocalStorage } from '@/hooks/utils/use-local-storage';
+import { useAiStore, useChatStore, useVADStore } from '@/store';
 import { toaster } from '@/components/ui/toaster';
 import { adAudioMonitor } from '@/utils/advertisement-audio-monitor';
 
@@ -83,13 +82,6 @@ const DEFAULT_VAD_SETTINGS: VADSettings = {
   redemptionFrames: 35,
 };
 
-const DEFAULT_VAD_STATE = {
-  micOn: false,
-  autoStopMic: false,
-  autoStartMicOn: false,
-  autoStartMicOnConvEnd: false,
-};
-
 /**
  * Create the VAD context
  */
@@ -107,30 +99,29 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const vadRef = useRef<any | null>(null);
   const previousTriggeredProbabilityRef = useRef(0);
 
-  // Persistent state management
-  const [micOn, setMicOn] = useLocalStorage('micOn', DEFAULT_VAD_STATE.micOn);
-  const autoStopMicRef = useRef(true);
-  const [autoStopMic, setAutoStopMicState] = useLocalStorage(
-    'autoStopMic',
-    DEFAULT_VAD_STATE.autoStopMic,
-  );
-  const [settings, setSettings] = useLocalStorage<VADSettings>(
-    'vadSettings',
-    DEFAULT_VAD_SETTINGS,
-  );
-  const baseVadSettingsRef = useRef<VADSettings>(DEFAULT_VAD_SETTINGS);
+  // ✅ 从 Zustand Store 读取所有 VAD 状态（单一数据源）
+  const vadStore = useVADStore();
+  const { 
+    micOn, 
+    autoStopMic, 
+    settings, 
+    autoStartMicOn, 
+    autoStartMicOnConvEnd,
+    setMicState,
+    updateVADSettings,
+    setAutoStopMic: setAutoStopMicStore,
+    setAutoStartMicOn: setAutoStartMicOnStore,
+    setAutoStartMicOnConvEnd: setAutoStartMicOnConvEndStore,
+  } = vadStore;
+
+  // Refs for stable access in callbacks
+  const autoStopMicRef = useRef(autoStopMic);
+  const autoStartMicRef = useRef(autoStartMicOn);
+  const autoStartMicOnConvEndRef = useRef(autoStartMicOnConvEnd);
+  
+  const baseVadSettingsRef = useRef<VADSettings>(settings);
   const elevatedRef = useRef(false);
   const lastSwitchTimeRef = useRef(0);
-  const [autoStartMicOn, setAutoStartMicOnState] = useLocalStorage(
-    'autoStartMicOn',
-    DEFAULT_VAD_STATE.autoStartMicOn,
-  );
-  const autoStartMicRef = useRef(false);
-  const [autoStartMicOnConvEnd, setAutoStartMicOnConvEndState] = useLocalStorage(
-    'autoStartMicOnConvEnd',
-    DEFAULT_VAD_STATE.autoStartMicOnConvEnd,
-  );
-  const autoStartMicOnConvEndRef = useRef(false);
 
   // Force update mechanism for ref updates
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
@@ -171,17 +162,18 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     setAiStateRef.current = setAiState;
   }, [setAiState]);
 
+  // ✅ 同步 Store 状态到 Refs
   useEffect(() => {
     autoStopMicRef.current = autoStopMic;
-  }, []);
+  }, [autoStopMic]);
 
   useEffect(() => {
     autoStartMicRef.current = autoStartMicOn;
-  }, []);
+  }, [autoStartMicOn]);
 
   useEffect(() => {
     autoStartMicOnConvEndRef.current = autoStartMicOnConvEnd;
-  }, []);
+  }, [autoStartMicOnConvEnd]);
 
   /**
    * Update previous triggered probability and force re-render
@@ -254,14 +246,15 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
    * Update VAD settings and restart if active
    */
   const updateSettings = useCallback((newSettings: VADSettings) => {
-    setSettings(newSettings);
+    // ✅ 更新 Store 中的设置
+    updateVADSettings(newSettings);
     if (vadRef.current) {
       stopMic();
       setTimeout(() => {
         startMic();
       }, 100);
     }
-  }, []);
+  }, [updateVADSettings]);
 
   // Initialize baseline once on mount
   useEffect(() => {
@@ -368,7 +361,8 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
         console.log('Starting VAD');
         vadRef.current.start();
       }
-      setMicOn(true);
+      // ✅ 更新 Store 中的麦克风状态
+      setMicState(true);
     } catch (error) {
       console.error('Failed to start VAD:', error);
       toaster.create({
@@ -377,7 +371,7 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
         duration: 2000,
       });
     }
-  }, []);
+  }, [setMicState]);
 
   /**
    * Stop microphone and VAD processing
@@ -393,37 +387,41 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     } else {
       console.log('VAD instance not found');
     }
-    setMicOn(false);
+    // ✅ 更新 Store 中的麦克风状态
+    setMicState(false);
     isProcessingRef.current = false;
-  }, []);
+  }, [setMicState]);
 
   /**
    * Set Auto stop mic state
    */
   const setAutoStopMic = useCallback((value: boolean) => {
     autoStopMicRef.current = value;
-    setAutoStopMicState(value);
+    // ✅ 使用 Store 的 setter 方法（不能直接赋值）
+    setAutoStopMicStore(value);
     forceUpdate();
-  }, []);
+  }, [setAutoStopMicStore]);
 
   const setAutoStartMicOn = useCallback((value: boolean) => {
     autoStartMicRef.current = value;
-    setAutoStartMicOnState(value);
+    // ✅ 使用 Store 的 setter 方法（不能直接赋值）
+    setAutoStartMicOnStore(value);
     forceUpdate();
-  }, []);
+  }, [setAutoStartMicOnStore]);
 
   const setAutoStartMicOnConvEnd = useCallback((value: boolean) => {
     autoStartMicOnConvEndRef.current = value;
-    setAutoStartMicOnConvEndState(value);
+    // ✅ 使用 Store 的 setter 方法（不能直接赋值）
+    setAutoStartMicOnConvEndStore(value);
     forceUpdate();
-  }, []);
+  }, [setAutoStartMicOnConvEndStore]);
 
   // Memoized context value
   const contextValue = useMemo(
     () => ({
       autoStopMic: autoStopMicRef.current,
       micOn,
-      setMicOn,
+      setMicOn: setMicState, // ✅ 使用 Store 的 setter
       setAutoStopMic,
       startMic,
       stopMic,
@@ -438,6 +436,10 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       micOn,
+      setMicState,
+      setAutoStopMic,
+      setAutoStartMicOn,
+      setAutoStartMicOnConvEnd,
       startMic,
       stopMic,
       settings,

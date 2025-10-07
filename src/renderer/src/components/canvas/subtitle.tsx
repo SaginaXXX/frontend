@@ -60,8 +60,7 @@ const Subtitle = memo((): JSX.Element | null => {
     };
   }, []);
 
-  if (!isLoaded || !subtitleText || !showSubtitle) return null;
-
+  // ✅ 先调用所有 hooks，再做条件判断
   const bgStyle = useMemo(() => {
     const cfg = (appConfig?.subtitle ?? {}) as any;
     const enabled = cfg.enabled ?? true;
@@ -87,7 +86,7 @@ const Subtitle = memo((): JSX.Element | null => {
       borderRadius: px(cfg.borderRadius, 14),
       boxShadow: cfg.boxShadow ?? '0 4px 20px rgba(0,0,0,0.25)',
       backdropFilter: cfg.blur ? `blur(${cfg.blur}px)` : undefined,
-      maxWidth: cfg.maxWidth ?? '90%',
+      maxWidth: cfg.maxWidth ?? '96%',
     } as any;
   }, [appConfig?.subtitle]);
 
@@ -95,6 +94,9 @@ const Subtitle = memo((): JSX.Element | null => {
     const c = (appConfig?.subtitle as any)?.textColor;
     return c ? ({ color: c } as React.CSSProperties) : undefined;
   }, [appConfig?.subtitle?.textColor]);
+
+  // ✅ 所有 hooks 调用完毕后，再做条件判断
+  if (!isLoaded || !subtitleText || !showSubtitle) return null;
 
   return (
     // 外层容器始终点穿，避免覆盖 Live2D；真正可交互的是内层背景框
