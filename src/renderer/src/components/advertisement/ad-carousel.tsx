@@ -36,6 +36,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
   const [isAudioMode] = useState(defaultAudioEnabled);
   const videoRef = useRef<HTMLVideoElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutsRef = useRef<number[]>([]); // ✅ 追踪所有 setTimeout，防止内存泄漏
   const { startMic } = useVAD();
   
   // 使用WebSocket Context
@@ -151,8 +152,8 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
       console.log('🔄 发送刷新请求:', refreshRequest);
       sendMessage(refreshRequest);
       
-      // 延迟一点，确保刷新完成后再获取列表
-      setTimeout(() => {
+      // ✅ 延迟一点，确保刷新完成后再获取列表（追踪定时器）
+      const timer1 = window.setTimeout(() => {
         // 发送MCP工具调用请求
         const toolRequest = {
           type: 'mcp-tool-call',
@@ -163,16 +164,18 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
         console.log('📡 发送广告列表请求:', toolRequest);
         sendMessage(toolRequest);
       }, 500); // 等待500ms确保刷新完成
+      timeoutsRef.current.push(timer1);
       
       // 响应将通过全局消息监听器处理
       
-      // 设置请求超时
-      setTimeout(() => {
+      // ✅ 设置请求超时（追踪定时器）
+      const timer2 = window.setTimeout(() => {
         if (isLoading) {
           console.error('❌ 广告列表请求超时');
           setIsLoading(false);
         }
       }, 8000); // 8秒超时（单个请求）
+      timeoutsRef.current.push(timer2);
       
     } catch (error) {
       console.error('❌ 广告列表获取失败:', error);
@@ -386,15 +389,21 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
     startMic().catch((e) => console.warn('启动本地VAD失败（可忽略）:', e));
   }, [isVisible, isAudioMode, enableAudioWithVAD, sendMessage]);
 
-  // 设置音频监听器
+  // ✅ 设置音频监听器 - 使用 ref 避免重复订阅
+  const audioInfoRef = useRef(audioInfo);
+  useEffect(() => { audioInfoRef.current = audioInfo; }, [audioInfo]);
+  
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
+
   useEffect(() => {
     if (isAudioMode && enableAudioWithVAD) {
       const handleAudioUpdate = (info: AdAudioInfo) => {
         setAudioInfo(info);
         
-        // 如果音频状态变化，更新后端VAD设置
-        if (info.isPlaying !== audioInfo.isPlaying) {
-          sendMessage({
+        // ✅ 使用 ref 读取最新状态，避免依赖变化导致重新订阅
+        if (info.isPlaying !== audioInfoRef.current.isPlaying) {
+          sendMessageRef.current({
             type: 'adaptive-vad-control',
             action: info.isPlaying ? 'adjust' : 'reset',
             volume: info.volume
@@ -403,19 +412,28 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
       };
 
       adAudioMonitor.addCallback(handleAudioUpdate);
+      console.log('🎵 AdCarousel: 添加音频监听器');
       
       return () => {
         adAudioMonitor.removeCallback(handleAudioUpdate);
+        console.log('🧹 AdCarousel: 移除音频监听器');
       };
     }
     
     // 如果不是音频模式，确保返回undefined
     return undefined;
-  }, [isAudioMode, enableAudioWithVAD, audioInfo.isPlaying, sendMessage]);
+  }, [isAudioMode, enableAudioWithVAD]); // ✅ 移除变化频繁的依赖
 
-  // 组件卸载时清理
+  // ✅ 组件卸载时清理所有资源
   useEffect(() => {
     return () => {
+      console.log('🧹 AdCarousel: 组件卸载，清理所有资源');
+      
+      // 清理所有定时器
+      timeoutsRef.current.forEach(timer => clearTimeout(timer));
+      timeoutsRef.current = [];
+      
+      // 清理音频监控
       if (isAudioMode && enableAudioWithVAD) {
         adAudioMonitor.stopMonitoring();
         // 通知后端停止自适应VAD
