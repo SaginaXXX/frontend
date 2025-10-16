@@ -49,9 +49,9 @@ const MinimalStatusIndicator = memo(({ onOpenControlPanel }: MinimalStatusIndica
       zIndex={1000}
       minW="200px"
     >
-      <HStack spacing={3} justify="space-between">
+      <HStack gap={3} justify="space-between">
         {/* AI状态显示 */}
-        <HStack spacing={2}>
+        <HStack gap={2}>
           <Box
             w="8px"
             h="8px"
@@ -64,7 +64,7 @@ const MinimalStatusIndicator = memo(({ onOpenControlPanel }: MinimalStatusIndica
         </HStack>
 
         {/* 麦克风状态 */}
-        <HStack spacing={2}>
+        <HStack gap={2}>
           <Box color={micOn ? 'green.400' : 'red.400'}>
             {micOn ? <BsMicFill size={14} /> : <BsMicMuteFill size={14} />}
           </Box>
@@ -83,7 +83,8 @@ const MinimalStatusIndicator = memo(({ onOpenControlPanel }: MinimalStatusIndica
       </HStack>
 
       {/* 快捷键提示 */}
-      <HStack spacing={1} mt="2" justify="center">
+      
+      <HStack gap={1} mt="2" justify="center">
         <Text fontSize="xs" color="whiteAlpha.600">
           <Kbd fontSize="xs">Ctrl</Kbd> + <Kbd fontSize="xs">Space</Kbd>
         </Text>

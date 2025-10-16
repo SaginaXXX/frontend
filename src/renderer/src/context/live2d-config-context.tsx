@@ -77,7 +77,7 @@ export interface ModelInfo {
  */
 interface Live2DConfigState {
   modelInfo?: ModelInfo;
-  setModelInfo: (info: ModelInfo | undefined) => void;
+  setModelInfo: (info: ModelInfo | undefined, overrideConfUid?: string) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   updateModelScale: (newScale: number) => void;
@@ -134,17 +134,22 @@ export function Live2DConfigProvider({ children }: { children: React.ReactNode }
   /**
    * Updates the Live2D model information and manages model scale persistence
    * @param info - The new model information to be set
+   * @param overrideConfUid - Optional confUid to use (bypasses state-based confUid check)
    * @returns void
    */
-  const setModelInfo = (info: ModelInfo | undefined) => {
+  const setModelInfo = (info: ModelInfo | undefined, overrideConfUid?: string) => {
     // Skip if no model URL is provided (avoid localStorage modelInfo remaining)
     if (!info?.url) {
+      console.log("⏭️ setModelInfo: No URL provided, skipping");
       return;
     }
 
+    // ✅ 使用 overrideConfUid（如果提供）或 context 中的 confUid
+    const effectiveConfUid = overrideConfUid || confUid;
+    
     // Validate configuration UID exists
-    if (!confUid) {
-      console.warn("Attempting to set model info without confUid");
+    if (!effectiveConfUid) {
+      console.warn("⚠️ setModelInfo: Attempting to set model info without confUid");
       toaster.create({
         title: "Attempting to set model info without confUid",
         type: "error",
@@ -155,28 +160,38 @@ export function Live2DConfigProvider({ children }: { children: React.ReactNode }
 
     // Prevent unnecessary updates if model info hasn't changed
     if (JSON.stringify(info) === JSON.stringify(modelInfo)) {
+      console.log("⏭️ setModelInfo: Model info unchanged, skipping");
       return;
     }
 
     if (info) {
-      // Generate storage key based on confUid and mode
-      const storageKey = getStorageKey(confUid, isPet);
+      // Generate storage key based on effectiveConfUid and mode
+      const storageKey = getStorageKey(effectiveConfUid, isPet);
       let finalScale: number;
 
       // Retrieve stored scale
       const storedScale = scaleMemory[storageKey];
-      if (storedScale !== undefined) {
+      if (storedScale !== undefined && !isNaN(storedScale)) {
         finalScale = storedScale;
+        console.log("📏 Using stored scale:", finalScale);
       } else {
-        finalScale = Number(info.kScale || 0.001);
+        // ✅ 添加 NaN 防护：确保 finalScale 始终是有效数字
+        const rawScale = Number(info.kScale);
+        if (isNaN(rawScale) || rawScale <= 0) {
+          finalScale = 0.5; // 默认值（改为更大的值，确保模型可见）
+          console.warn("⚠️ Invalid kScale value, using default:", finalScale);
+        } else {
+          finalScale = rawScale;
+        }
         // If no stored scale, store the initial scale in memory
         setScaleMemory((prev) => ({
           ...prev,
           [storageKey]: finalScale,
         }));
+        console.log("📏 Computed new scale:", finalScale);
       }
 
-      console.log("finalScale", finalScale);
+      console.log("✅ setModelInfo: Setting model with confUid:", effectiveConfUid, "scale:", finalScale);
 
       setModelInfoState({
         ...info,
@@ -193,6 +208,7 @@ export function Live2DConfigProvider({ children }: { children: React.ReactNode }
       });
     } else {
       // Reset model info state when clearing (like switching character)
+      console.log("🗑️ setModelInfo: Clearing model info");
       setModelInfoState(undefined);
     }
   };

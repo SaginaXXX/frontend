@@ -4,6 +4,7 @@ import { wsService } from '../../services/websocket-service';
 import { adAudioMonitor, AdAudioInfo } from '../../utils/advertisement-audio-monitor';
 import { useVAD } from '@/context/vad-context';
 
+
 interface Advertisement {
   id: string;
   name: string;
@@ -38,6 +39,9 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutsRef = useRef<number[]>([]); // ✅ 追踪所有 setTimeout，防止内存泄漏
   const { startMic } = useVAD();
+  // ✅ 使用 ref 存储 startMic，避免闭包陷阱
+  const startMicRef = useRef(startMic);
+  useEffect(() => { startMicRef.current = startMic; }, [startMic]);
   
   // 使用WebSocket Context
   const { sendMessage, wsState: _wsState, baseUrl } = useWebSocket();
@@ -376,6 +380,13 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
 
   // 当重新可见时确保重启监控与播放（避免从对话返回后不唤醒）
   useEffect(() => {
+    console.log('🔄 AdCarousel VAD状态检查:', { 
+      isVisible, 
+      isAudioMode, 
+      enableAudioWithVAD,
+      hasVideo: !!videoRef.current 
+    });
+    
     if (!isVisible) return;
     const video = videoRef.current;
     if (!video) return;
@@ -385,8 +396,11 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
       sendMessage({ type: 'adaptive-vad-control', action: 'start', volume: 0.5 });
     }
 
-    // 确保在广告可见时本地麦克风处于开启状态，便于唤醒
-    startMic().catch((e) => console.warn('启动本地VAD失败（可忽略）:', e));
+    // ✅ 使用 ref.current 调用最新的 startMic，避免闭包陷阱
+    startMicRef.current().catch((e) => {
+      console.error('❌ AdCarousel: 启动本地VAD失败:', e);
+      console.error('Stack:', e?.stack);
+    });
   }, [isVisible, isAudioMode, enableAudioWithVAD, sendMessage]);
 
   // ✅ 设置音频监听器 - 使用 ref 避免重复订阅

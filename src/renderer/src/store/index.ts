@@ -50,18 +50,18 @@ export interface AiState {
 
 export interface VADState {
   // 麦克风相关
-  micOn: boolean;
-  autoStopMic: boolean;
-  autoStartMicOn: boolean;
-  autoStartMicOnConvEnd: boolean;
+  micOn: boolean; // 麦克风开关
+  autoStopMic: boolean; // 自动停止麦克风
+  autoStartMicOn: boolean; // 自动启动麦克风
+  autoStartMicOnConvEnd: boolean; // 对话结束时自动启动麦克风
   previousTriggeredProbability: number;
   settings: {
-    positiveSpeechThreshold: number;
-    negativeSpeechThreshold: number;
-    redemptionFrames: number;
-    frameSamples: number;
-    minSpeechFrames: number;
-    vadMode: number;
+    positiveSpeechThreshold: number; // 正向语音阈值
+    negativeSpeechThreshold: number; // 负向语音阈值
+    redemptionFrames: number; // 重置帧数
+    frameSamples: number; // 帧样本
+    minSpeechFrames: number; // 最小语音帧数
+    vadMode: number; // VAD模式
   };
 }
 
@@ -218,13 +218,13 @@ const initialAiState: AiState = {
 
 const initialVADState: VADState = {
   micOn: false,
-  autoStopMic: true,
-  autoStartMicOn: false,
-  autoStartMicOnConvEnd: false,
+  autoStopMic: true,              // ✅ 默认开启：AI说话时自动停止麦克风
+  autoStartMicOn: false,          // 保持 false：AI中断时不自动开启（避免误触发）
+  autoStartMicOnConvEnd: true,    // ✅ 默认开启：对话结束时自动启动麦克风
   previousTriggeredProbability: 0,
   settings: {
-    positiveSpeechThreshold: 60,
-    negativeSpeechThreshold: 45,
+    positiveSpeechThreshold: 30,
+    negativeSpeechThreshold: 30,
     redemptionFrames: 8,
     frameSamples: 1536,
     minSpeechFrames: 4,

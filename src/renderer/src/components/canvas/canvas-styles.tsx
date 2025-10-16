@@ -43,8 +43,9 @@ export const canvasStyles = {
       top: '50%',
       left: '50%',
       transform: 'translate(-50%, -50%)',
-      minWidth: 'fit-content',
-      maxWidth: '90%',
+      minWidth: '200px', // ✅ 设置最小宽度，避免过窄
+      maxWidth: '95%',
+      width: 'max-content', // ✅ 自适应内容宽度，但不超过 maxWidth
       zIndex: 3,
       userSelect: 'none',
       willChange: 'transform',
