@@ -86,7 +86,9 @@ const Subtitle = memo((): JSX.Element | null => {
       borderRadius: px(cfg.borderRadius, 14),
       boxShadow: cfg.boxShadow ?? '0 4px 20px rgba(0,0,0,0.25)',
       backdropFilter: cfg.blur ? `blur(${cfg.blur}px)` : undefined,
-      maxWidth: cfg.maxWidth ?? '96%',
+      // ✅ 移除内层 maxWidth，让它使用外层容器的完整宽度
+      maxWidth: cfg.maxWidth ?? '100%',
+      width: '100%', // ✅ 确保占满外层容器
     } as any;
   }, [appConfig?.subtitle]);
 

@@ -138,6 +138,10 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const aiStateRef = useRef<string>(aiState);
   const setSubtitleTextRef = useRef(setSubtitleText);
   const setAiStateRef = useRef(setAiState);
+  
+  // ✅ Refs for stopMic and startMic to avoid closure traps
+  const stopMicRef = useRef<(() => void) | null>(null);
+  const startMicRef = useRef<(() => Promise<void>) | null>(null);
 
   const isProcessingRef = useRef(false);
 
@@ -214,12 +218,17 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const handleSpeechEnd = useCallback((audio: Float32Array) => {
     if (!isProcessingRef.current) return;
     console.log('Speech ended');
+    console.log('🎛️ autoStopMic 当前值:', autoStopMicRef.current);
     audioTaskQueue.clearQueue();
 
     if (autoStopMicRef.current) {
-      stopMic();
+      // ✅ 使用 ref 调用最新的 stopMic，避免闭包陷阱
+      console.log('✅ autoStopMic 为 true，调用 stopMic');
+      if (stopMicRef.current) {
+        stopMicRef.current();
+      }
     } else {
-      console.log('Auto stop mic is on, keeping mic active');
+      console.log('❌ autoStopMic 为 false，keeping mic active');
     }
 
     setPreviousTriggeredProbability(0);
@@ -248,11 +257,24 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const updateSettings = useCallback((newSettings: VADSettings) => {
     // ✅ 更新 Store 中的设置
     updateVADSettings(newSettings);
-    if (vadRef.current) {
-      stopMic();
-      setTimeout(() => {
-        startMic();
-      }, 100);
+    // ✅ 使用 ref 调用 stopMic 和 startMic，避免循环依赖
+    if (vadRef.current && stopMicRef.current && startMicRef.current) {
+      try {
+        stopMicRef.current();
+        
+        // 延迟重新初始化，让设置生效
+        setTimeout(async () => {
+          try {
+            if (startMicRef.current) {
+              await startMicRef.current();
+            }
+          } catch (error) {
+            console.error('❌ Failed to restart VAD after settings change:', error);
+          }
+        }, 100);
+      } catch (error) {
+        console.error('❌ Failed to update VAD settings:', error);
+      }
     }
   }, [updateVADSettings]);
 
@@ -353,18 +375,30 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
    * Start microphone and VAD processing
    */
   const startMic = useCallback(async () => {
+    // ✅ 添加堆栈追踪，找出是谁在调用 startMic
+    console.log('🎤 startMic 被调用, vadRef.current:', !!vadRef.current);
+    console.log('📍 调用堆栈:', new Error().stack);
+    console.log('🔊 当前 AI 状态:', aiStateRef.current);
     try {
       if (!vadRef.current) {
         console.log('Initializing VAD');
         await initVAD();
+        console.log('✅ VAD 初始化成功');
       } else {
         console.log('Starting VAD');
         vadRef.current.start();
+        console.log('✅ VAD 启动成功');
       }
       // ✅ 更新 Store 中的麦克风状态
       setMicState(true);
     } catch (error) {
-      console.error('Failed to start VAD:', error);
+      console.error('❌ Failed to start VAD:', error);
+      const err = error as any;
+      console.error('Error details:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack
+      });
       toaster.create({
         title: `Failed to start VAD: ${error}`,
         type: 'error',
@@ -377,7 +411,9 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
    * Stop microphone and VAD processing
    */
   const stopMic = useCallback(() => {
-    console.log('Stopping VAD');
+    console.log('🛑 Stopping VAD');
+    console.log('📍 调用堆栈:', new Error().stack);
+    console.log('🔊 当前 AI 状态:', aiStateRef.current);
     if (vadRef.current) {
       vadRef.current.pause();
       vadRef.current.destroy();
@@ -391,6 +427,15 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     setMicState(false);
     isProcessingRef.current = false;
   }, [setMicState]);
+
+  // ✅ 更新 stopMicRef 和 startMicRef，确保总是调用最新的函数
+  useEffect(() => {
+    stopMicRef.current = stopMic;
+  }, [stopMic]);
+
+  useEffect(() => {
+    startMicRef.current = startMic;
+  }, [startMic]);
 
   /**
    * Set Auto stop mic state

@@ -30,13 +30,8 @@ interface ChatHistoryState {
 
 /**
  * Default values and constants
+ * Note: DEFAULT_HISTORY removed as state is managed by Zustand store
  */
-const DEFAULT_HISTORY = {
-  messages: [] as Message[],
-  historyList: [] as HistoryInfo[],
-  currentHistoryUid: null as string | null,
-  fullResponse: '',
-};
 
 /**
  * Create the chat history context
@@ -54,7 +49,6 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
     historyList,
     currentHistoryUid,
     fullResponse,
-    forceNewMessage,
     setMessages,
     setHistoryList,
     setCurrentHistoryUid,
