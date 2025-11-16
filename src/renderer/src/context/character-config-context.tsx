@@ -1,15 +1,12 @@
 import {
-  createContext, useContext, useState, useMemo, useEffect, useCallback,
+  createContext, useContext, useMemo, useEffect, useCallback,
 } from 'react';
+import { useAppStore, ConfigFile } from '@/store';
 
 /**
- * Character configuration file interface
- * @interface ConfigFile
+ * 导出 ConfigFile 类型（向后兼容）
  */
-export interface ConfigFile {
-  filename: string;
-  name: string;
-}
+export type { ConfigFile };
 
 /**
  * Character configuration context state interface
@@ -26,35 +23,42 @@ interface CharacterConfigState {
 }
 
 /**
- * Default values and constants
- */
-const DEFAULT_CONFIG = {
-  confName: '',
-  confUid: '',
-  configFiles: [] as ConfigFile[],
-};
-
-/**
  * Create the character configuration context
  */
 export const ConfigContext = createContext<CharacterConfigState | null>(null);
 
+// ✅ 稳定的默认值引用（避免每次创建新数组导致无限循环）
+const EMPTY_CONFIG_FILES: ConfigFile[] = [];
+
 /**
  * Character Configuration Provider Component
+ * ✅ 重构后：从 Store 读取所有状态，Context 只作为适配层
  * @param {Object} props - Provider props
  * @param {React.ReactNode} props.children - Child components
  */
 export function CharacterConfigProvider({ children }: { children: React.ReactNode }) {
-  const [confName, setConfName] = useState<string>(DEFAULT_CONFIG.confName);
-  const [confUid, setConfUid] = useState<string>(DEFAULT_CONFIG.confUid);
-  const [configFiles, setConfigFiles] = useState<ConfigFile[]>(DEFAULT_CONFIG.configFiles);
+  // ✅ 使用稳定的常量作为默认值（避免每次创建新数组引用）
+  const confName = useAppStore((s) => s.config?.character?.confName ?? '');
+  const confUid = useAppStore((s) => s.config?.character?.confUid ?? '');
+  const configFiles = useAppStore((s) => s.config?.character?.configFiles ?? EMPTY_CONFIG_FILES);
+  
+  // ✅ Actions 是稳定的引用（不需要放入依赖数组）
+  const setConfName = useAppStore((s) => s.setCharacterConfName);
+  const setConfUid = useAppStore((s) => s.setCharacterConfUid);
+  const setConfigFiles = useAppStore((s) => s.setCharacterConfigFiles);
 
+  // ✅ 唯一的辅助方法（不适合放在 Store 中）
   const getFilenameByName = useCallback(
     (name: string) => configFiles.find((config) => config.name === name)?.filename,
     [configFiles],
   );
 
-  // Memoized context value
+  // ✅ Electron IPC 同步副作用
+  useEffect(() => {
+    (window.api as any)?.updateConfigFiles?.(configFiles);
+  }, [configFiles]);
+
+  // Memoized context value - 注意：actions 不应放入依赖数组（它们是稳定引用）
   const contextValue = useMemo(
     () => ({
       confName,
@@ -67,10 +71,6 @@ export function CharacterConfigProvider({ children }: { children: React.ReactNod
     }),
     [confName, confUid, configFiles, getFilenameByName],
   );
-
-  useEffect(() => {
-    (window.api as any)?.updateConfigFiles?.(configFiles);
-  }, [configFiles]);
 
   return (
     <ConfigContext.Provider value={contextValue}>

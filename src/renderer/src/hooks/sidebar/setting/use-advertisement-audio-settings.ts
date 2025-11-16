@@ -1,20 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useLocalStorage } from '@/hooks/utils/use-local-storage';
+import { useAppStore, AdAudioMode, type AdvertisementAudioSettings } from '@/store';
 
-// 广告音频模式枚举
-export enum AdAudioMode {
-  MUTED = 'muted',           // 🔇 静音模式
-  AUDIO = 'audio',           // 🎵 音声模式  
-  AUDIO_VAD = 'audio_vad'    // 🎵 音声+VADモード
-}
-
-// 广告音频设置接口
-export interface AdvertisementAudioSettings {
-  audioMode: AdAudioMode;
-  autoSwitchNext: boolean;
-  cleanPlaybackExperience: boolean;
-  supportAnyLength: boolean;
-}
+// 导出类型供其他组件使用
+export { AdAudioMode, type AdvertisementAudioSettings };
 
 // Hook Props接口
 interface UseAdvertisementAudioSettingsProps {
@@ -22,23 +10,13 @@ interface UseAdvertisementAudioSettingsProps {
   onCancel?: (callback: () => void) => () => void;
 }
 
-// 默认设置
-const defaultSettings: AdvertisementAudioSettings = {
-  audioMode: AdAudioMode.AUDIO_VAD,  // 默认启用音声+VAD模式
-  autoSwitchNext: true,
-  cleanPlaybackExperience: true,
-  supportAnyLength: true,
-};
-
 export const useAdvertisementAudioSettings = ({ 
   onSave, 
   onCancel 
 }: UseAdvertisementAudioSettingsProps = {}) => {
-  // 持久化存储的设置
-  const [persistedSettings, setPersistedSettings] = useLocalStorage<AdvertisementAudioSettings>(
-    'advertisementAudioSettings',
-    defaultSettings
-  );
+  // ✅ 精确订阅，避免过度订阅
+  const persistedSettings = useAppStore((s) => s.media.advertisementAudio);
+  const updateAdvertisementAudioSettings = useAppStore((s) => s.updateAdvertisementAudioSettings);
 
   // 临时设置状态（用于编辑时的预览）
   const [tempSettings, setTempSettings] = useState<AdvertisementAudioSettings>(persistedSettings);
@@ -62,10 +40,10 @@ export const useAdvertisementAudioSettings = ({
 
   // 保存设置
   const handleSave = useCallback(() => {
-    setPersistedSettings(tempSettings);
+    updateAdvertisementAudioSettings(tempSettings);
     setOriginalSettings(tempSettings);
     console.log('💾 广告音频设置已保存:', tempSettings);
-  }, [tempSettings, setPersistedSettings]);
+  }, [tempSettings, updateAdvertisementAudioSettings]);
 
   // 取消设置（恢复到原始状态）
   const handleCancel = useCallback(() => {
@@ -114,10 +92,8 @@ export const useAdvertisementAudioSettings = ({
 
 // 导出便捷hook用于其他组件访问持久化设置
 export const useAdvertisementAudioConfig = () => {
-  const [settings] = useLocalStorage<AdvertisementAudioSettings>(
-    'advertisementAudioSettings',
-    defaultSettings
-  );
+  // ✅ 精确订阅
+  const settings = useAppStore((s) => s.media.advertisementAudio);
   
   return {
     settings,

@@ -28,7 +28,6 @@ interface MediaFile {
   format: string;
   size_bytes: number;
   category: string;
-  machine_id?: string; // 洗衣机视频特有
 }
 
 interface MediaProps {
@@ -46,9 +45,7 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
   } = useAdvertisementAudioSettings({ onSave, onCancel });
 
   // 状态管理
-  const [activeTab, setActiveTab] = useState<'ads' | 'videos'>('ads');
   const [advertisements, setAdvertisements] = useState<MediaFile[]>([]);
-  const [laundryVideos, setLaundryVideos] = useState<MediaFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -184,20 +181,14 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
         return;
       }
       
-      // 验证文件大小（广告500MB，教程1GB）
-      const maxSize = activeTab === 'ads' ? 500 * 1024 * 1024 : 1024 * 1024 * 1024;
-      const maxSizeLabel = activeTab === 'ads' ? '500MB' : '1GB';
+      // 验证文件大小（500MB）
+      const maxSize = 500 * 1024 * 1024;
       if (file.size > maxSize) {
-        showMessage('error', `文件大小不能超过 ${maxSizeLabel}，当前文件: ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
+        showMessage('error', `文件大小不能超过 500MB，当前文件: ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
         return;
       }
       
-      // 根据当前Tab调用对应的上传函数
-      if (activeTab === 'ads') {
-        uploadVideo(file);
-      } else {
-        uploadLaundryVideo(file);
-      }
+      uploadVideo(file);
     }
     
     // 重置文件输入
@@ -217,12 +208,7 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
     const videoFile = files.find(file => file.type.startsWith('video/'));
     
     if (videoFile) {
-      // 根据当前Tab调用对应的上传函数
-      if (activeTab === 'ads') {
-        uploadVideo(videoFile);
-      } else {
-        uploadLaundryVideo(videoFile);
-      }
+      uploadVideo(videoFile);
     } else {
       showMessage('error', '请拖拽视频文件，只支持视频格式文件');
     }
@@ -243,133 +229,6 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
     }
   };
 
-  // ==================== 洗衣机视频管理函数 ====================
-
-  // 获取洗衣机视频列表
-  const fetchLaundryVideos = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`${serverConfig.baseUrl}/api/videos`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      console.log('📂 获取洗衣机视频列表:', data);
-      setLaundryVideos(data.videos || []);
-    } catch (error) {
-      console.error('❌ 获取洗衣机视频列表失败:', error);
-      showMessage('error', `获取洗衣机视频列表失败: ${String(error)}`);
-      setLaundryVideos([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 删除洗衣机视频
-  const deleteLaundryVideo = async (filename: string) => {
-    if (!confirm(`确定要删除洗衣机教程视频 "${filename}" 吗？此操作不可撤销！`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`${serverConfig.baseUrl}/api/videos/${encodeURIComponent(filename)}`, {
-        method: 'DELETE'
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || `HTTP ${response.status}`);
-      }
-      
-      const result = await response.json();
-      console.log('🗑️ 删除洗衣机视频成功:', result);
-      
-      showMessage('success', result.message);
-      
-      // 刷新列表
-      await fetchLaundryVideos();
-      
-      // 🔔 通知洗衣机服务器刷新 (如果需要)
-      window.dispatchEvent(new CustomEvent('laundryVideoListChanged', {
-        detail: { action: 'delete', filename }
-      }));
-      
-    } catch (error) {
-      console.error('❌ 删除洗衣机视频失败:', error);
-      showMessage('error', `删除失败: ${String(error)}`);
-    }
-  };
-
-  // 上传洗衣机视频
-  const uploadLaundryVideo = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      
-      // 模拟上传进度
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-      
-      const response = await fetch(`${serverConfig.baseUrl}/api/videos/upload`, {
-        method: 'POST',
-        body: formData
-      });
-      
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || `HTTP ${response.status}`);
-      }
-      
-      const result = await response.json();
-      console.log('📤 上传洗衣机视频成功:', result);
-      
-      showMessage('success', result.message);
-      
-      // 刷新列表
-      await fetchLaundryVideos();
-      
-      // 🔔 通知洗衣机服务器刷新
-      window.dispatchEvent(new CustomEvent('laundryVideoListChanged', {
-        detail: { action: 'upload', filename: result.file_info?.filename }
-      }));
-      
-    } catch (error) {
-      console.error('❌ 上传洗衣机视频失败:', error);
-      showMessage('error', `上传失败: ${String(error)}`);
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  // 预览洗衣机视频
-  const previewLaundryVideo = (video: MediaFile) => {
-    const videoUrl = getTutorialVideoUrl(video.filename);
-    window.open(videoUrl, '_blank');
-  };
-
-  // ==================== 通用函数 ====================
-
-  // 根据当前Tab获取当前数据
-  const getCurrentData = () => {
-    return activeTab === 'ads' ? advertisements : laundryVideos;
-  };
-
-  // 组件加载时获取数据
-  useEffect(() => {
-    if (activeTab === 'ads') {
-      fetchAdvertisements();
-    } else {
-      fetchLaundryVideos();
-    }
-  }, [activeTab]);
 
   // 初始加载
   useEffect(() => {
@@ -379,34 +238,8 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
   return (
     <Box {...settingStyles.common.container}>
       
-      {/* Tab 切换 */}
-      <HStack mb={6} gap={2} width="full">
-        <Button
-          variant={activeTab === 'ads' ? 'solid' : 'ghost'}
-          colorPalette="blue"
-          onClick={() => setActiveTab('ads')}
-          size="md"
-          borderRadius="lg"
-          flex={1}
-          fontWeight="500"
-        >
-          🎬 広告動画
-        </Button>
-        <Button
-          variant={activeTab === 'videos' ? 'solid' : 'ghost'}
-          colorPalette="blue"
-          onClick={() => setActiveTab('videos')}
-          size="md"
-          borderRadius="lg"
-          flex={1}
-          fontWeight="500"
-        >
-          🧺 洗濯チュートリアル
-        </Button>
-      </HStack>
-
-      {/* ✅ 广告播放设置 - 仅在广告Tab显示 */}
-      {activeTab === 'ads' && (
+      {/* ✅ 广告播放设置 */}
+      {(
         <Box mb={4} p={4} borderWidth={1} borderRadius="md" bg="blue.50" borderColor="blue.200">
           <Heading size="md" mb={3} color="blue.700" fontWeight="600">🎵 広告再生設定</Heading>
           <VStack align="stretch" gap={4}>
@@ -489,7 +322,7 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
       {/* 上传区域 */}
       <Box mb={4} p={4} borderWidth={1} borderRadius="md" borderColor="gray.200">
         <Heading size="md" mb={4} color="gray.700" fontWeight="600">
-          📤 新しい{activeTab === 'ads' ? '広告' : '洗濯機チュートリアル'}をアップロード
+          📤 新しい広告をアップロード
         </Heading>
         
         <Box
@@ -545,17 +378,11 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
       {/* 文件列表 */}
       <Box p={4} borderWidth={1} borderRadius="md" borderColor="gray.200">
         <HStack mb={4}>
-          <Heading size="md">📋 {activeTab === 'ads' ? '广告' : '洗衣机教程'}列表</Heading>
+          <Heading size="md">📋 広告リスト</Heading>
           <Spacer />
           <UIButton 
             size="sm" 
-            onClick={() => {
-              if (activeTab === 'ads') {
-                fetchAdvertisements();
-              } else {
-                fetchLaundryVideos();
-              }
-            }}
+            onClick={fetchAdvertisements}
             loading={isLoading}
             variant="outline"
           >
@@ -567,13 +394,13 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
           <Flex justify="center" p={8}>
             <Spinner size="lg" />
           </Flex>
-        ) : getCurrentData().length === 0 ? (
-          <Alert status="info" title={`暂无${activeTab === 'ads' ? '广告视频' : '洗衣机教程视频'}`}>
-            请上传第一个{activeTab === 'ads' ? '广告视频开始使用轮播功能' : '洗衣机教程视频'}
+        ) : advertisements.length === 0 ? (
+          <Alert status="info" title="暂无广告视频">
+            请上传第一个广告视频开始使用轮播功能
           </Alert>
         ) : (
           <VStack align="stretch">
-            {getCurrentData().map((item) => (
+            {advertisements.map((item) => (
               <Box key={item.id} p={4} borderWidth={1} borderRadius="md" borderColor="gray.300" bg="white">
                 <HStack>
                   <Box flex={1}>
@@ -584,11 +411,6 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
                       <Tag variant="subtle" color="gray.700" bg="gray.100">
                         {item.format}
                       </Tag>
-                      {item.machine_id && (
-                        <Tag colorScheme="green" variant="subtle">
-                          マシン {item.machine_id}
-                        </Tag>
-                      )}
                     </HStack>
                     <Text fontSize="sm" color="gray.800" mb={1}>
                       ファイル名: {item.filename}
@@ -604,13 +426,7 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
                         size="sm"
                         colorScheme="blue"
                         variant="ghost"
-                        onClick={() => {
-                          if (activeTab === 'ads') {
-                            previewVideo(item);
-                          } else {
-                            previewLaundryVideo(item);
-                          }
-                        }}
+                        onClick={() => previewVideo(item)}
                       >
                         👁️
                       </Button>
@@ -621,13 +437,7 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
                         size="sm"
                         colorScheme="red"
                         variant="ghost"
-                        onClick={() => {
-                          if (activeTab === 'ads') {
-                            deleteAdvertisement(item.filename);
-                          } else {
-                            deleteLaundryVideo(item.filename);
-                          }
-                        }}
+                        onClick={() => deleteAdvertisement(item.filename)}
                       >
                         🗑️
                       </Button>
@@ -641,20 +451,20 @@ function Media({ onSave, onCancel }: MediaProps): JSX.Element {
       </Box>
 
       {/* 统计信息 */}
-      {getCurrentData().length > 0 && (
+      {advertisements.length > 0 && (
         <Box mt={4} p={4} borderWidth={1} borderRadius="md">
-          <Heading size="sm" mb={3}>📊 统计信息</Heading>
+          <Heading size="sm" mb={3}>📊 統計情報</Heading>
           <HStack>
             <VStack>
               <Text fontSize="2xl" fontWeight="bold" color="blue.500">
-                {getCurrentData().length}
+                {advertisements.length}
               </Text>
               <Text fontSize="sm" color="gray.800">総動画数</Text>
             </VStack>
             <Box mx={8} height="50px" borderLeft="1px solid" borderColor="gray.300" />
             <VStack>
               <Text fontSize="2xl" fontWeight="bold" color="green.500">
-                {(getCurrentData().reduce((total, item) => total + item.size_bytes, 0) / (1024 * 1024)).toFixed(1)}MB
+                {(advertisements.reduce((total, item) => total + item.size_bytes, 0) / (1024 * 1024)).toFixed(1)}MB
               </Text>
               <Text fontSize="sm" color="gray.800">総サイズ</Text>
             </VStack>

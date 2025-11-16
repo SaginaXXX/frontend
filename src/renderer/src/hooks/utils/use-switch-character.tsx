@@ -3,8 +3,7 @@ import { useWebSocket } from '@/context/websocket-context';
 import { useConfig } from '@/context/character-config-context';
 import { useInterrupt } from '@/components/canvas/live2d';
 import { useVAD } from '@/context/vad-context';
-import { useChatStore, useAiStore } from '@/store';
-import { useLive2DConfig } from '@/context/live2d-config-context';
+import { useChatStore, useAiStore, useAppStore } from '@/store';
 
 export function useSwitchCharacter() {
   const { sendMessage } = useWebSocket();
@@ -13,7 +12,8 @@ export function useSwitchCharacter() {
   const { stopMic } = useVAD();
   const { setSubtitleText } = useChatStore();
   const { setAiState } = useAiStore();
-  const { setModelInfo } = useLive2DConfig();
+  // ✅ 直接从 useAppStore 获取 action，避免订阅不需要的状态
+  const setLive2DModelInfo = useAppStore((s) => s.setLive2DModelInfo);
   const switchCharacter = useCallback((fileName: string) => {
     const currentFilename = getFilenameByName(confName);
 
@@ -26,13 +26,13 @@ export function useSwitchCharacter() {
     interrupt();
     stopMic();
     setAiState('loading');
-    setModelInfo(undefined);
+    setLive2DModelInfo(undefined);
     sendMessage({
       type: 'switch-config',
       file: fileName,
     });
     console.log('Switch Character fileName: ', fileName);
-  }, [confName, getFilenameByName, sendMessage, interrupt, stopMic, setSubtitleText, setAiState]);
+  }, [confName, getFilenameByName, sendMessage, interrupt, stopMic, setSubtitleText, setAiState, setLive2DModelInfo]);
 
   return { switchCharacter };
 }

@@ -1,17 +1,27 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { useVAD, VADSettings } from '@/context/vad-context';
+import { useVADStore } from '@/store';
+
+// VAD 设置接口
+export interface VADSettings {
+  positiveSpeechThreshold: number;
+  negativeSpeechThreshold: number;
+  redemptionFrames: number;
+  frameSamples: number;
+  minSpeechFrames: number;
+  vadMode: number;
+}
 
 export const useASRSettings = () => {
   const {
     settings,
-    updateSettings,
+    updateVADSettings,
     autoStopMic,
     setAutoStopMic,
     autoStartMicOn,
     setAutoStartMicOn,
     autoStartMicOnConvEnd,
     setAutoStartMicOnConvEnd,
-  } = useVAD();
+  } = useVADStore();
 
   const localSettingsRef = useRef<VADSettings>(settings);
   const originalSettingsRef = useRef(settings);
@@ -58,7 +68,7 @@ export const useASRSettings = () => {
   };
 
   const handleSave = (): void => {
-    updateSettings(localSettingsRef.current);
+    updateVADSettings(localSettingsRef.current);
     originalSettingsRef.current = localSettingsRef.current;
     originalAutoStopMicRef.current = localVoiceInterruption;
     originalAutoStartMicOnRef.current = localAutoStartMic;

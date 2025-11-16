@@ -1,16 +1,25 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useInterrupt } from "@/components/canvas/live2d";
 import { useMicToggle } from "./use-mic-toggle";
-import { useLive2DConfig } from "@/context/live2d-config-context";
+import { useAppStore } from "@/store";
+import { useConfig } from "@/context/character-config-context";
 import { useSwitchCharacter } from "@/hooks/utils/use-switch-character";
 import { useForceIgnoreMouse } from "@/hooks/utils/use-force-ignore-mouse";
 
 export function useIpcHandlers({ isPet }: { isPet: boolean }) {
   const { handleMicToggle } = useMicToggle();
   const { interrupt } = useInterrupt();
-  const { modelInfo, setModelInfo } = useLive2DConfig();
+  // ✅ 只订阅需要的 modelInfo，避免整个 live2d 对象变化导致重渲染
+  const modelInfo = useAppStore((s) => s.media.live2d.modelInfo);
+  const setLive2DModelInfo = useAppStore((s) => s.setLive2DModelInfo);
+  const { confUid } = useConfig();
+  const [mode, setMode] = useState<'pet' | 'window'>('window');
   const { switchCharacter } = useSwitchCharacter();
   const { setForceIgnoreMouse } = useForceIgnoreMouse();
+
+  useEffect(() => {
+    setMode(isPet ? 'pet' : 'window');
+  }, [isPet]);
 
   const micToggleHandler = useCallback(() => {
     handleMicToggle();
@@ -21,13 +30,13 @@ export function useIpcHandlers({ isPet }: { isPet: boolean }) {
   }, [interrupt]);
 
   const scrollToResizeHandler = useCallback(() => {
-    if (modelInfo) {
-      setModelInfo({
+    if (modelInfo && confUid) {
+      setLive2DModelInfo({
         ...modelInfo,
         scrollToResize: !modelInfo.scrollToResize,
-      });
+      }, confUid, mode === 'pet');
     }
-  }, [modelInfo, setModelInfo]);
+  }, [modelInfo, setLive2DModelInfo, confUid, mode]);
 
   const switchCharacterHandler = useCallback(
     (_event: Electron.IpcRendererEvent, filename: string) => {

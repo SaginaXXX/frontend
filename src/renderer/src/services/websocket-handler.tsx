@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import { wsService, MessageEvent } from "@/services/websocket-service";
 import { WebSocketContext, HistoryInfo } from "@/context/websocket-context";
-import { ModelInfo, useLive2DConfig } from "@/context/live2d-config-context";
+import { type ModelInfo } from "@/store";
 import { audioTaskQueue } from "@/utils/task-queue";
 import { useAudioTask } from "@/components/canvas/live2d";
 // import { useBgUrl } from '@/context/bgurl-context';
@@ -15,21 +15,49 @@ import { useVAD } from "@/context/vad-context";
 import { useGroup } from "@/context/group-context";
 import { useInterrupt } from "@/hooks/utils/use-interrupt";
 import {
-  useMediaStore,
   useChatStore,
   useAiStore,
   useAppStore,
   useConfigStore,
+  AdAudioMode,
 } from "@/store";
 
 const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
   const [wsState, setWsState] = useState<string>("CLOSED");
+  const [isPet, setIsPet] = useState(false);
   // ✅ 从 Zustand Store 读取配置（单一数据源）
   const { wsUrl, baseUrl, updateNetworkConfig } = useConfigStore();
   const baseUrlRef = useRef(baseUrl);
+  
+  // 🔬 性能监控
+  const performanceMetrics = useRef({
+    messageCount: 0,
+    totalProcessingTime: 0,
+    slowMessages: [] as Array<{ type: string; time: number }>,
+    messageReceiveTime: new Map<string, number>(),  // 记录消息接收时间
+  });
+  
+  useEffect(() => {
+    const unsubscribe = (window.api as any)?.onModeChanged((mode: string) => {
+      setIsPet(mode === "pet");
+    });
+    return () => unsubscribe?.();
+  }, []);
   const { status: aiStatus, setAiState } = useAiStore();
   const setBackendSynthComplete = useAppStore((s) => s.setBackendSynthComplete);
-  const { setModelInfo } = useLive2DConfig();
+  // ✅ 直接从 useAppStore 获取 actions，避免订阅不需要的状态
+  const setLive2DModelInfo = useAppStore((s) => s.setLive2DModelInfo);
+  const setShowAdvertisements = useAppStore((s) => s.setShowAdvertisements);
+  const setBackgroundFiles = useAppStore((s) => s.setBackgroundFiles);
+  const showMCPContent = useAppStore((s) => s.showMCPContent);
+  const hideMCPContent = useAppStore((s) => s.hideMCPContent);
+  // ASR和VAD设置更新
+  const setAutoStopMic = useAppStore((s) => s.setAutoStopMic);
+  const setAutoStartMicOn = useAppStore((s) => s.setAutoStartMicOn);
+  const setAutoStartMicOnConvEnd = useAppStore((s) => s.setAutoStartMicOnConvEnd);
+  const updateVADSettings = useAppStore((s) => s.updateVADSettings);
+  // 广告音频模式设置
+  const setAdvertisementAudioMode = useAppStore((s) => s.setAdvertisementAudioMode);
   const { setSubtitleText } = useChatStore();
   const { clearResponse, setForceNewMessage } = useChatHistory();
   const { addAudioTask } = useAudioTask();
@@ -43,15 +71,6 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
   const { startMic, stopMic, autoStartMicOnConvEnd } = useVAD();
   const autoStartMicOnConvEndRef = useRef(autoStartMicOnConvEnd);
   const { interrupt } = useInterrupt();
-  const {
-    setCurrentVideo,
-    setAvailableMachines,
-    isLaundryMode,
-    setIsLaundryMode,
-    isVideoPlaying,
-    setShowAdvertisements,
-    setBackgroundFiles,
-  } = useMediaStore();
 
   const {
     setCurrentHistoryUid,
@@ -62,8 +81,6 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
 
   // Refs to stabilize dependencies and avoid re-creating callbacks
   const aiStatusRef = useRef(aiStatus);
-  const isVideoPlayingRef = useRef(isVideoPlaying);
-  const isLaundryModeRef = useRef(isLaundryMode);
   const startMicRef = useRef(startMic);
   const stopMicRef = useRef(stopMic);
   const setAiStateRef = useRef(setAiState);
@@ -79,20 +96,12 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
   const setMessagesRef = useRef(setMessages);
   const setHistoryListRef = useRef(setHistoryList);
   const appendHumanMessageRef = useRef(appendHumanMessage);
-  const setCurrentVideoRef = useRef(setCurrentVideo);
-  const setAvailableMachinesRef = useRef(setAvailableMachines);
   const setShowAdvertisementsRef = useRef(setShowAdvertisements);
   const setBackgroundFilesRef = useRef(setBackgroundFiles);
 
   useEffect(() => {
     aiStatusRef.current = aiStatus;
   }, [aiStatus]);
-  useEffect(() => {
-    isVideoPlayingRef.current = isVideoPlaying;
-  }, [isVideoPlaying]);
-  useEffect(() => {
-    isLaundryModeRef.current = isLaundryMode;
-  }, [isLaundryMode]);
   useEffect(() => {
     startMicRef.current = startMic;
   }, [startMic]);
@@ -139,12 +148,6 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
     appendHumanMessageRef.current = appendHumanMessage;
   }, [appendHumanMessage]);
   useEffect(() => {
-    setCurrentVideoRef.current = setCurrentVideo;
-  }, [setCurrentVideo]);
-  useEffect(() => {
-    setAvailableMachinesRef.current = setAvailableMachines;
-  }, [setAvailableMachines]);
-  useEffect(() => {
     setShowAdvertisementsRef.current = setShowAdvertisements;
   }, [setShowAdvertisements]);
   useEffect(() => {
@@ -171,14 +174,14 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
       // 2. 再设置 modelInfo，直接传入 confUid（避免依赖状态更新）
       if (pendingData.confUid && pendingData.modelInfo) {
         console.log("🎨 Setting modelInfo with confUid:", pendingData.confUid);
-        // ✅ 传入 confUid 作为第二个参数，避免依赖 React 状态更新
-        setModelInfo(pendingData.modelInfo, pendingData.confUid);
+        // ✅ 传入 confUid 和 isPet 作为参数，避免依赖 React 状态更新
+        setLive2DModelInfo(pendingData.modelInfo, pendingData.confUid, isPet);
       }
 
       // 3. 清空 pending 状态
       setPendingData({});
     }
-  }, [pendingData, setModelInfo, setConfUid]);
+  }, [pendingData, setLive2DModelInfo, setConfUid, isPet]);
 
   const handleControlMessage = useCallback((controlText: string) => {
     switch (controlText) {
@@ -195,6 +198,15 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
         setSubtitleTextRef.current("考え中...");
         audioTaskQueue.clearQueue();
         clearResponseRef.current();
+        
+        // ✅ 图片画布：在AI开启下一句话后自动关闭
+        // 视频画布：保持显示（会在播放结束后自动关闭）
+        const currentMCPState = useAppStore.getState().mcp;
+        if (currentMCPState?.isVisible && currentMCPState?.contentType === 'image') {
+          console.log("🖼️ 对话开始：自动关闭图片画布");
+          hideMCPContent();
+        }
+        // 视频画布不关闭，让它继续播放直到结束
         break;
       case "conversation-chain-end":
         audioTaskQueue.addTask(
@@ -231,6 +243,15 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const handleWebSocketMessage = useCallback((message: MessageEvent) => {
+    // 🔬 性能监控：开始计时
+    const startTime = performance.now();
+    
+    // 📊 记录特殊消息的接收时间（用于端到端延迟分析）
+    if (message.type === 'control' && message.text === 'conversation-chain-start') {
+      performanceMetrics.current.messageReceiveTime.set('conversation-start', Date.now());
+      console.log("🚀 对话开始");
+    }
+    
     console.log("Received message from server:", message);
     switch (message.type) {
       case "control":
@@ -286,10 +307,7 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
           setSubtitleTextRef.current(message.text);
           // 当连接建立后，确保默认显示广告（避免旧持久化状态影响）
           if (message.text === "Connection established") {
-            // 仅在未播放教学视频时恢复广告
-            if (!isVideoPlayingRef.current) {
-              setShowAdvertisementsRef.current(true);
-            }
+            setShowAdvertisementsRef.current(true);
           }
         }
         break;
@@ -315,42 +333,144 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
         wsService.sendMessage({ type: "fetch-history-list" });
         wsService.sendMessage({ type: "create-new-history" });
         break;
+      
+      case "settings-updated":
+        // 远程Web控制面板修改设置后，保存到localStorage并刷新页面
+        if (message.settings) {
+          console.log("📡 收到设置更新广播:", message.applied_keys);
+          // const settings = message.settings; // 未使用，已注释
+          
+          // 字幕等UI设置由前端控制，暂时只显示通知
+          // 注意：直接修改Zustand persist的localStorage会破坏数据结构，导致崩溃
+          // 未来改进：实现专用的设置持久化机制
+          
+          // 通知用户设置已更新，并自动刷新
+          toaster.create({
+            title: "设置已更新",
+            description: `远程控制面板修改了 ${message.applied_keys?.length || 0} 项设置。正在刷新页面...`,
+            type: "info",
+            duration: 2000,
+          });
+          
+          // ✅ 2秒后自动刷新页面，应用新设置
+          setTimeout(() => {
+            console.log("🔄 自动刷新页面以应用新设置");
+            window.location.reload();
+          }, 2000);
+        }
+        break;
+      
+      case "advertisement-refresh":
+        // 广告视频上传/删除后，刷新MCP广告列表
+        console.log("📡 收到广告刷新通知:", message.action, message.filename);
+        
+        // 发送MCP刷新请求
+        wsService.sendMessage({
+          type: "mcp-tool-call",
+          tool_name: "refresh_advertisements",
+          arguments: {}
+        });
+        
+        toaster.create({
+          title: "广告列表已更新",
+          description: `${message.action === 'uploaded' ? '上传' : '删除'}了广告: ${message.filename}`,
+          type: "success",
+          duration: 3000,
+        });
+        break;
+      
+      case "asr-settings-update":
+        // 处理ASR设置更新（来自扫码控制面板）
+        console.log("📡 收到ASR设置更新:", message);
+        
+        // 更新麦克风自动控制设置
+        if (typeof message.auto_stop_mic === 'boolean') {
+          setAutoStopMic(message.auto_stop_mic);
+          console.log("✅ 已更新 auto_stop_mic:", message.auto_stop_mic);
+        }
+        if (typeof message.auto_start_mic_on_conv_end === 'boolean') {
+          setAutoStartMicOnConvEnd(message.auto_start_mic_on_conv_end);
+          console.log("✅ 已更新 auto_start_mic_on_conv_end:", message.auto_start_mic_on_conv_end);
+        }
+        if (typeof message.auto_start_mic_on === 'boolean') {
+          setAutoStartMicOn(message.auto_start_mic_on);
+          console.log("✅ 已更新 auto_start_mic_on:", message.auto_start_mic_on);
+        }
+        
+        // 更新VAD阈值设置
+        const vadSettings: any = {};
+        if (typeof message.positive_speech_threshold === 'number') {
+          vadSettings.positiveSpeechThreshold = message.positive_speech_threshold;
+        }
+        if (typeof message.negative_speech_threshold === 'number') {
+          vadSettings.negativeSpeechThreshold = message.negative_speech_threshold;
+        }
+        if (typeof message.redemption_frames === 'number') {
+          vadSettings.redemptionFrames = message.redemption_frames;
+        }
+        
+        if (Object.keys(vadSettings).length > 0) {
+          // ✅ 验证阈值：negativeSpeechThreshold 必须小于 positiveSpeechThreshold
+          const currentState = useAppStore.getState();
+          const positive = vadSettings.positiveSpeechThreshold ?? currentState.vad.settings.positiveSpeechThreshold;
+          const negative = vadSettings.negativeSpeechThreshold ?? currentState.vad.settings.negativeSpeechThreshold;
+          
+          if (negative >= positive) {
+            console.warn(`⚠️ VAD阈值验证失败: negativeSpeechThreshold (${negative}) 必须小于 positiveSpeechThreshold (${positive})`);
+            // 自动修正：将negative设置为positive - 1，但至少为0
+            vadSettings.negativeSpeechThreshold = Math.max(0, positive - 1);
+            console.log(`✅ 已自动修正 negativeSpeechThreshold 为: ${vadSettings.negativeSpeechThreshold}`);
+          }
+          
+          updateVADSettings(vadSettings);
+          console.log("✅ 已更新VAD设置:", vadSettings);
+        }
+        
+        toaster.create({
+          title: "ASR设置已更新",
+          description: "扫码控制面板的ASR设置已生效",
+          type: "success",
+          duration: 2000,
+        });
+        break;
+      
+      case "advertisement-audio-mode-update":
+        // 处理广告音频模式更新（来自扫码控制面板）
+        console.log("📡 收到广告音频模式更新:", message.audio_mode);
+        
+        if (message.audio_mode) {
+          // 将字符串模式转换为枚举类型
+          const modeMap: Record<string, AdAudioMode> = {
+            'muted': AdAudioMode.MUTED,
+            'audio': AdAudioMode.AUDIO,
+            'audio_vad': AdAudioMode.AUDIO_VAD
+          };
+          
+          const audioMode = modeMap[message.audio_mode];
+          if (audioMode !== undefined) {
+            setAdvertisementAudioMode(audioMode);
+            console.log("✅ 已更新广告音频模式:", audioMode);
+            
+            const modeNames: Record<AdAudioMode, string> = {
+              [AdAudioMode.MUTED]: '静音模式',
+              [AdAudioMode.AUDIO]: '音频模式',
+              [AdAudioMode.AUDIO_VAD]: '音频+VAD模式'
+            };
+            
+            toaster.create({
+              title: "广告音频模式已更新",
+              description: `已切换为: ${modeNames[audioMode]}`,
+              type: "success",
+              duration: 2000,
+            });
+          } else {
+            console.warn("⚠️ 无效的音频模式:", message.audio_mode);
+          }
+        }
+        break;
       case "background-files":
         if (message.files && setBackgroundFilesRef.current) {
           setBackgroundFilesRef.current(message.files);
-        }
-        break;
-      case "laundry-video-response":
-        // 处理洗衣店视频播放请求
-        if (message.video_path) {
-          // 自动启用洗衣店模式
-          if (!isLaundryMode) {
-            setIsLaundryMode(true);
-          }
-          // 隐藏广告，专注教程视频
-          setShowAdvertisementsRef.current(false);
-          const videoTitle = message.machine_id
-            ? `${message.machine_id}号洗濯機の使用説明`
-            : "洗衣机使用教程";
-
-          // 构造完整的视频URL
-          // 如果是相对路径，则使用baseUrl构造完整URL
-          let videoUrl = message.video_path;
-          if (videoUrl.startsWith("/")) {
-            videoUrl = baseUrlRef.current + videoUrl;
-          }
-
-          console.log(`🎬 洗衣机视频URL: ${videoUrl}`);
-
-          // 当开始播放视频时，清空当前TTS队列，避免重叠
-          audioTaskQueue.clearQueue();
-          setCurrentVideoRef.current(videoUrl, videoTitle);
-        }
-        break;
-      case "laundry-machines-list":
-        // 更新可用洗衣机列表
-        if (isLaundryMode && message.machines) {
-          setAvailableMachinesRef.current(message.machines);
         }
         break;
       case "wake-word-state":
@@ -422,11 +542,10 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
         // 例如：setWakeWordState(current_state);
         break;
       case "audio":
-        // 正在播放教学视频时，抑制TTS以避免与视频声音重叠
+        // AI被中断或正在听时，抑制TTS
         if (
           aiStatusRef.current === "interrupted" ||
-          aiStatusRef.current === "listening" ||
-          isVideoPlayingRef.current
+          aiStatusRef.current === "listening"
         ) {
           console.log(
             "Audio playback intercepted. Sentence:",
@@ -554,8 +673,134 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
         interrupt(false); // do not send interrupt signal to server
         break;
       case "mcp-tool-response":
-        // MCP工具响应已由组件直接处理，这里只做日志记录
-        console.log("📡 MCP工具响应已转发给相关组件:", message.tool_name);
+        // MCP 工具响应处理
+        {
+          const { tool_name, result, error } = message as any;
+          
+          if (error) {
+            console.error("❌ MCP工具调用失败:", tool_name, error);
+            // TODO: 可以显示错误提示
+            toaster.create({
+              title: "MCP工具调用失败",
+              description: `${tool_name}: ${error}`,
+              type: "error",
+            });
+            break;
+          }
+          
+          // result是一个数组，包含工具执行结果
+          // 在Prompt模式下，格式为: [{tool_id: "...", content: "...", is_error: false}]
+          if (result && Array.isArray(result) && result.length > 0) {
+            const firstResult = result[0];
+            const resultContent = firstResult?.content;
+            
+            if (resultContent) {
+              // 处理主题介绍MCP工具的响应格式
+              let contentType: string | null = null;
+              let contentData: any = null;
+              
+              // 检查是否是主题介绍工具的响应（JSON字符串格式）
+              if (typeof resultContent === 'string') {
+                try {
+                  const parsed = JSON.parse(resultContent);
+                  if (parsed.type === 'video' || parsed.type === 'image') {
+                    contentType = parsed.type;
+                    contentData = {
+                      url: parsed.url,
+                      description: parsed.description,
+                      title: parsed.topic_name || parsed.description,
+                      alt: parsed.description
+                    };
+                    console.log("📡 解析到MCP内容:", { type: contentType, url: parsed.url });
+                  }
+                } catch (e) {
+                  console.warn("⚠️ MCP响应不是JSON格式:", e, "原始内容:", resultContent);
+                  // 不是JSON格式，尝试其他解析方式
+                  if (typeof resultContent === 'object' && resultContent !== null && 'type' in resultContent) {
+                    contentType = (resultContent as any).type;
+                    contentData = (resultContent as any).data || resultContent;
+                  }
+                }
+              } else if (resultContent && typeof resultContent === 'object' && resultContent !== null && 'type' in resultContent) {
+                // 标准格式（对象）
+                contentType = (resultContent as any).type;
+                contentData = (resultContent as any).data || resultContent;
+              }
+              
+              if (contentType && contentData) {
+                console.log("📡 MCP工具响应:", tool_name, "类型:", contentType, "数据:", contentData);
+                
+                // 如果是视频，立即设置AI状态为waiting（静音）
+                if (contentType === 'video') {
+                  setAiStateRef.current('waiting');
+                  console.log("🎬 视频内容：AI已设置为waiting状态（静音）");
+                }
+                // 如果是图片，AI保持正常说话（不需要特殊处理）
+                
+                // 调用 Store 方法显示 MCP 内容
+                showMCPContent(contentType as any, contentData);
+                console.log("🎨 MCP Canvas: 内容已加载", { type: contentType, data: contentData });
+              } else {
+                console.log("📡 MCP工具响应（无有效内容）:", tool_name, "原始结果:", result);
+              }
+            } else {
+              console.log("📡 MCP工具响应（无content字段）:", tool_name, "结果:", firstResult);
+            }
+          } else {
+            console.log("📡 MCP工具响应（结果为空或格式错误）:", tool_name, "结果:", result);
+          }
+        }
+        break;
+      case "tool_call_status":
+        // MCP工具执行状态更新（用于显示第二画布）
+        {
+          const { tool_name, status, content } = message as any;
+          
+          // 只处理完成状态的主题图片/视频工具
+          if (status === "completed" && content && (tool_name === "get_topic_image" || tool_name === "get_topic_video")) {
+            try {
+              const parsed = typeof content === 'string' ? JSON.parse(content) : content;
+              
+              if (parsed.type === 'image' || parsed.type === 'video') {
+                const contentType = parsed.type;
+                
+                // ✅ 修复URL：确保有http://前缀
+                let imageUrl = parsed.url;
+                if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+                  // 如果URL以127.0.0.1或localhost开头，添加http://
+                  if (imageUrl.startsWith('127.0.0.1') || imageUrl.startsWith('localhost')) {
+                    imageUrl = `http://${imageUrl}`;
+                  } else {
+                    // 否则假设是相对路径，添加基础URL
+                    imageUrl = `http://127.0.0.1:12393${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+                  }
+                  console.log("🔧 URL已修复:", { 原始: parsed.url, 修复后: imageUrl });
+                }
+                
+                const contentData = {
+                  url: imageUrl,
+                  description: parsed.description,
+                  title: parsed.topic_name || parsed.description,
+                  alt: parsed.description
+                };
+                
+                console.log("📡 从tool_call_status解析到MCP内容:", { type: contentType, url: imageUrl });
+                
+                // 如果是视频，立即设置AI状态为waiting（静音）
+                if (contentType === 'video') {
+                  setAiStateRef.current('waiting');
+                  console.log("🎬 视频内容：AI已设置为waiting状态（静音）");
+                }
+                
+                // 调用 Store 方法显示 MCP 内容
+                showMCPContent(contentType as any, contentData);
+                console.log("🎨 MCP Canvas: 内容已从tool_call_status加载", { type: contentType, data: contentData });
+              }
+            } catch (e) {
+              console.warn("⚠️ 解析tool_call_status内容失败:", e, "原始内容:", content);
+            }
+          }
+        }
         break;
       case "adaptive-vad-response":
         // 自适应VAD控制响应
@@ -568,8 +813,52 @@ const WebSocketHandler = memo(({ children }: { children: React.ReactNode }) => {
       default:
         console.warn("Unknown message type:", message.type);
     }
+    
+    // 🔬 性能监控：结束计时并统计
+    const processingTime = performance.now() - startTime;
+    const metrics = performanceMetrics.current;
+    metrics.messageCount++;
+    metrics.totalProcessingTime += processingTime;
+    
+    // 记录慢消息（超过 10ms）
+    if (processingTime > 10) {
+      metrics.slowMessages.push({ type: message.type, time: processingTime });
+      console.warn('⚠️ 慢消息处理:', message.type, processingTime.toFixed(2), 'ms');
+    }
+    
+    // 📊 记录端到端延迟（从对话开始到第一个音频）
+    if (message.type === 'audio' && metrics.messageReceiveTime.has('conversation-start')) {
+      const startTime = metrics.messageReceiveTime.get('conversation-start')!;
+      const endToEndDelay = Date.now() - startTime;
+      console.log('⏱️ 端到端延迟（从对话开始到首个音频）:', endToEndDelay, 'ms');
+      metrics.messageReceiveTime.delete('conversation-start');
+    }
   }, []);
 
+  // 🔬 性能监控：定期输出统计（开发环境）
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+    
+    const interval = setInterval(() => {
+      const metrics = performanceMetrics.current;
+      if (metrics.messageCount > 0) {
+        const avgTime = metrics.totalProcessingTime / metrics.messageCount;
+        console.log('📊 性能统计（过去 60 秒）:', {
+          消息数: metrics.messageCount,
+          平均处理时间: avgTime.toFixed(2) + 'ms',
+          慢消息数: metrics.slowMessages.length,
+          慢消息类型: metrics.slowMessages.slice(-5).map(m => `${m.type}(${m.time.toFixed(1)}ms)`),
+        });
+        // 重置统计（滚动窗口）
+        metrics.messageCount = 0;
+        metrics.totalProcessingTime = 0;
+        metrics.slowMessages = [];
+      }
+    }, 60000);  // 每 60 秒
+    
+    return () => clearInterval(interval);
+  }, []);
+  
   // 分离连接管理和订阅管理，确保正确清理
   useEffect(() => {
     console.log("🔌 WebSocketHandler: 初始化WebSocket连接", wsUrl);

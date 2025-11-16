@@ -25,3 +25,4 @@ Safe to keep (Zustand-backed adapters still in use):
 
 Removal plan:
 - Keep for one release cycle; if no regressions, delete the commented legacy files.
+

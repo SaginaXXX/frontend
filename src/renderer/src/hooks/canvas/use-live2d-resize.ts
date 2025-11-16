@@ -1,7 +1,8 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { Live2DModel } from 'pixi-live2d-display-lipsyncpatch';
 import * as PIXI from 'pixi.js';
-import { ModelInfo, useLive2DConfig } from '@/context/live2d-config-context';
+import { useAppStore, type ModelInfo } from '@/store';
+import { useConfig } from '@/context/character-config-context';
 
 // Speed of model scaling when using mouse wheel
 const SCALE_SPEED = 0.01;
@@ -69,7 +70,9 @@ export const useLive2DResize = (
   modelInfo: ModelInfo | undefined,
   isPet: boolean,
 ) => {
-  const { updateModelScale } = useLive2DConfig();
+  // ✅ 直接从 useAppStore 获取 action，避免订阅不需要的状态
+  const updateLive2DScale = useAppStore((s) => s.updateLive2DScale);
+  const { confUid } = useConfig();
   const scaleUpdateTimeout = useRef<NodeJS.Timeout | null>(null);
   const lastScaleRef = useRef<number | null>(null);
 
@@ -90,11 +93,13 @@ export const useLive2DResize = (
 
       // Debounce scale updates
       scaleUpdateTimeout.current = setTimeout(() => {
-        updateModelScale(smoothScale);
-        lastScaleRef.current = smoothScale;
+        if (confUid) {
+          updateLive2DScale(smoothScale, confUid, isPet);
+          lastScaleRef.current = smoothScale;
+        }
       }, 500);
     }
-  }, [modelRef, modelInfo?.scrollToResize, updateModelScale]);
+  }, [modelRef, modelInfo?.scrollToResize, updateLive2DScale, confUid, isPet]);
 
   // Add wheel event listener
   useEffect(() => {

@@ -13,6 +13,7 @@ import {
 } from '@chakra-ui/react';
 // removed unused imports
 import { FiX, FiSettings, FiAperture, FiMic, FiVolume2, FiCpu, FiFilm, FiInfo } from 'react-icons/fi';
+import { FiUpload } from 'react-icons/fi'; // ✅ 添加二维码图标
 // removed unused imports
 
 // 导入所有需要的设置组件
@@ -23,6 +24,7 @@ import TTS from '@/components/sidebar/setting/tts';
 import Agent from '@/components/sidebar/setting/agent';
 import Media from '@/components/sidebar/setting/media';
 import About from '@/components/sidebar/setting/about';
+import QRCodeManager from '@/components/sidebar/setting/qrcode'; // ✅ 导入二维码管理组件
 
 // 仅保留设置相关组件
 
@@ -239,6 +241,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ isOpen, onClose, useViewpor
                     <span>メディア</span>
                   </HStack>
                 </Tabs.Trigger>
+                <Tabs.Trigger value="qrcode">
+                  <HStack as="span" gap={2} align="center">
+                    <FiUpload />
+                    <span>二维码管理</span>
+                  </HStack>
+                </Tabs.Trigger>
                 <Tabs.Trigger value="about">
                   <HStack as="span" gap={2} align="center">
                     <FiInfo />
@@ -268,6 +276,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ isOpen, onClose, useViewpor
                 </Tabs.Content>
                 <Tabs.Content value="media">
                   <Media onSave={handleSaveCallback} onCancel={handleCancelCallback} />
+                </Tabs.Content>
+                <Tabs.Content value="qrcode">
+                  <QRCodeManager onSave={handleSaveCallback} onCancel={handleCancelCallback} />
                 </Tabs.Content>
                 <Tabs.Content value="about">
                   <About />

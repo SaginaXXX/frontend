@@ -4,7 +4,7 @@ import { wsService } from '../../services/websocket-service';
 import { adAudioMonitor, AdAudioInfo } from '../../utils/advertisement-audio-monitor';
 import { useVAD } from '@/context/vad-context';
 
-
+// 广告接口
 interface Advertisement {
   id: string;
   name: string;
@@ -14,6 +14,7 @@ interface Advertisement {
   format: string;
 }
 
+// 广告轮播组件属性接口
 interface AdCarouselProps {
   isVisible: boolean;
   onRequestAdvertisements?: () => void;
@@ -22,6 +23,7 @@ interface AdCarouselProps {
   fitMode?: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'; // 新增：广告视频适配模式
 }
 
+// 广告轮播组件
 export const AdCarousel: React.FC<AdCarouselProps> = memo(({ 
   isVisible, 
   onRequestAdvertisements: _onRequestAdvertisements,
@@ -39,6 +41,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = memo(({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutsRef = useRef<number[]>([]); // ✅ 追踪所有 setTimeout，防止内存泄漏
   const { startMic } = useVAD();
+  
   // ✅ 使用 ref 存储 startMic，避免闭包陷阱
   const startMicRef = useRef(startMic);
   useEffect(() => { startMicRef.current = startMic; }, [startMic]);

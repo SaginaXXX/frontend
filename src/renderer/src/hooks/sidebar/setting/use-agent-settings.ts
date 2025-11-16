@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useProactiveSpeak } from '@/context/proactive-speak-context';
+import { useProactiveStore } from '@/store';
 
 interface UseAgentSettingsProps {
   onSave?: (callback: () => void) => () => void
@@ -7,24 +7,27 @@ interface UseAgentSettingsProps {
 }
 
 export function useAgentSettings({ onSave, onCancel }: UseAgentSettingsProps = {}) {
-  const { settings: persistedSettings, updateSettings } = useProactiveSpeak();
+  // 从 Store 获取主动说话设置
+  const { 
+    allowProactiveSpeak, 
+    idleSecondsToSpeak, 
+    allowButtonTrigger,
+    updateProactiveSettings 
+  } = useProactiveStore();
 
-  const [tempSettings, setTempSettings] = useState({
-    allowProactiveSpeak: persistedSettings.allowProactiveSpeak,
-    idleSecondsToSpeak: persistedSettings.idleSecondsToSpeak,
-    allowButtonTrigger: persistedSettings.allowButtonTrigger,
-  });
+  const persistedSettings = {
+    allowProactiveSpeak,
+    idleSecondsToSpeak,
+    allowButtonTrigger,
+  };
 
-  const [originalSettings, setOriginalSettings] = useState({
-    ...persistedSettings,
-  });
+  const [tempSettings, setTempSettings] = useState(persistedSettings);
+  const [originalSettings, setOriginalSettings] = useState(persistedSettings);
 
   useEffect(() => {
-    if (persistedSettings) {
-      setOriginalSettings(persistedSettings);
-      setTempSettings(persistedSettings);
-    }
-  }, [persistedSettings]);
+    setOriginalSettings(persistedSettings);
+    setTempSettings(persistedSettings);
+  }, [allowProactiveSpeak, idleSecondsToSpeak, allowButtonTrigger]);
 
   const handleAllowProactiveSpeakChange = useCallback((checked: boolean) => {
     setTempSettings((prev) => ({
@@ -48,14 +51,14 @@ export function useAgentSettings({ onSave, onCancel }: UseAgentSettingsProps = {
   }, []);
 
   const handleSave = useCallback(() => {
-    updateSettings(tempSettings);
+    updateProactiveSettings(tempSettings);
     setOriginalSettings(tempSettings);
-  }, [updateSettings, tempSettings]);
+  }, [updateProactiveSettings, tempSettings]);
 
   const handleCancel = useCallback(() => {
     setTempSettings(originalSettings);
-    updateSettings(originalSettings);
-  }, [originalSettings, updateSettings]);
+    updateProactiveSettings(originalSettings);
+  }, [originalSettings, updateProactiveSettings]);
 
   useEffect(() => {
     if (!onSave || !onCancel) return;
