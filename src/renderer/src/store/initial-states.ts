@@ -49,6 +49,7 @@ export const initialMediaState: MediaState = {
     modelInfo: undefined,
     isLoading: false,
     scaleMemory: {},
+    positionMemory: {},
   },
   // 背景相关
   backgroundUrl: '',

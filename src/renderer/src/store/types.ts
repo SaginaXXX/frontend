@@ -71,6 +71,7 @@ export interface MediaState {
     modelInfo: ModelInfo | undefined;
     isLoading: boolean;
     scaleMemory: Record<string, number>;
+    positionMemory: Record<string, { x: number; y: number }>;
   };
   
   // 背景相关

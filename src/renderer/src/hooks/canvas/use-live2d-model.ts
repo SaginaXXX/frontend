@@ -23,6 +23,7 @@ import { audioTaskQueue } from "@/utils/task-queue";
 import { useAiStore } from "@/store";
 import { toaster } from "@/components/ui/toaster";
 import { useForceIgnoreMouse } from "../utils/use-force-ignore-mouse";
+import { useConfig } from "@/context/character-config-context";
 
 interface UseLive2DModelProps {
   isPet: boolean; // Whether the model is in pet mode
@@ -41,6 +42,9 @@ export const useLive2DModel = ({
   const { setCurrentModel } = useModelContext();
   // ✅ 直接从 useAppStore 获取 action，避免订阅不需要的状态
   const setLive2DLoading = useAppStore((s) => s.setLive2DLoading);
+  const updateLive2DPosition = useAppStore((s) => s.updateLive2DPosition);
+  const positionMemory = useAppStore((s) => s.media.live2d.positionMemory);
+  const { confUid } = useConfig();
   const loadingRef = useRef(false);
   const { setAiState, status: aiState } = useAiStore();
   const [isModelReady, setIsModelReady] = useState(false);
@@ -181,8 +185,23 @@ export const useLive2DModel = ({
         height: 0,
       };
 
-    resetModelPosition(modelRef.current, width, height, modelInfo?.initialXshift, modelInfo?.initialYshift);
-  }, [modelInfo?.initialXshift, modelInfo?.initialYshift]);
+    // 检查是否有保存的位置
+    if (confUid) {
+      const storageKey = `${confUid}_${isPet ? "pet" : "window"}`;
+      const savedPosition = positionMemory[storageKey];
+      
+      if (savedPosition && savedPosition.x !== undefined && savedPosition.y !== undefined) {
+        // 使用保存的位置
+        modelRef.current.position.set(savedPosition.x, savedPosition.y);
+      } else {
+        // 没有保存的位置，使用默认位置
+        resetModelPosition(modelRef.current, width, height, modelInfo?.initialXshift, modelInfo?.initialYshift);
+      }
+    } else {
+      // 没有 confUid，使用默认位置
+      resetModelPosition(modelRef.current, width, height, modelInfo?.initialXshift, modelInfo?.initialYshift);
+    }
+  }, [modelInfo?.initialXshift, modelInfo?.initialYshift, confUid, isPet, positionMemory]);
 
   // Load Live2D model with configuration
   const loadModel = useCallback(async () => {
@@ -323,6 +342,13 @@ export const useLive2DModel = ({
         if (dragging) {
           dragging = false;
           model.cursor = "grab";
+          
+          // 保存拖拽后的位置
+          if (confUid && !isTap) {
+            // 只有在真正拖拽（不是点击）时才保存位置
+            updateLive2DPosition(model.position.x, model.position.y, confUid, isPet);
+          }
+          
           if (isTap) {
             handleTapMotion(model, e.global.x, e.global.y);
           }
@@ -330,11 +356,17 @@ export const useLive2DModel = ({
       });
 
       model.on("pointerupoutside", () => {
+        if (dragging) {
+          // 保存拖拽后的位置（在外部释放时）
+          if (confUid) {
+            updateLive2DPosition(model.position.x, model.position.y, confUid, isPet);
+          }
+        }
         dragging = false;
         model.cursor = "grab";
       });
     },
-    [isPet, forceIgnoreMouse],
+    [isPet, forceIgnoreMouse, confUid, updateLive2DPosition],
   );
 
   const handleTapMotion = useCallback(
