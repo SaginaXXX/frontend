@@ -17,11 +17,114 @@
  * - 这个文件确保全局 ErrorBoundary、Chakra UI 主题、以及设备/模型/VAD/桥接能力在任何页面都可用。
  */
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, Component, ErrorInfo } from 'react';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import { Toaster } from '@/components/ui/toaster';
 import { ErrorBoundary } from '@/components/error/error-boundary';
 import { errorHandler } from '@/utils/error-handler';
+
+// =========================
+// 简单错误边界（用于捕获ChakraProvider初始化错误）
+// =========================
+
+interface SimpleErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class SimpleErrorBoundary extends Component<
+  { children: ReactNode },
+  SimpleErrorBoundaryState
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): SimpleErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('🚨 外层错误边界捕获到错误:', error, errorInfo);
+    errorHandler.handleError({
+      type: 'unknown' as any,
+      message: error.message,
+      originalError: error,
+      context: 'Outer Error Boundary (ChakraProvider initialization)',
+      timestamp: Date.now(),
+      recoverable: false,
+    });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#f7fafc',
+            padding: '2rem',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          }}
+        >
+          <div style={{ textAlign: 'center', maxWidth: '500px' }}>
+            <div style={{ fontSize: '3rem', color: '#e53e3e', marginBottom: '1rem' }}>
+              ⚠️
+            </div>
+            <h1 style={{ fontSize: '1.5rem', color: '#2d3748', marginBottom: '1rem' }}>
+              应用初始化失败
+            </h1>
+            <p style={{ color: '#718096', marginBottom: '2rem' }}>
+              很抱歉，应用在初始化时遇到了问题。请刷新页面重试。
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#3182ce',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+                fontSize: '1rem',
+              }}
+            >
+              刷新页面
+            </button>
+            {this.state.error && (
+              <details style={{ marginTop: '2rem', textAlign: 'left' }}>
+                <summary style={{ cursor: 'pointer', color: '#718096' }}>
+                  错误详情
+                </summary>
+                <pre
+                  style={{
+                    marginTop: '1rem',
+                    padding: '1rem',
+                    backgroundColor: '#edf2f7',
+                    borderRadius: '0.375rem',
+                    overflow: 'auto',
+                    fontSize: '0.875rem',
+                    color: '#c53030',
+                  }}
+                >
+                  {this.state.error.message}
+                  {'\n'}
+                  {this.state.error.stack}
+                </pre>
+              </details>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // =========================
 // 核心Provider层 - 基础设施
@@ -46,12 +149,14 @@ export const CoreProviders: React.FC<CoreProvidersProps> = ({ children }) => {
   };
 
   return (
-    <ErrorBoundary onError={handleGlobalError}>
+    <SimpleErrorBoundary>
       <ChakraProvider value={defaultSystem}>
-        <Toaster />
-        {children}
+        <ErrorBoundary onError={handleGlobalError}>
+          <Toaster />
+          {children}
+        </ErrorBoundary>
       </ChakraProvider>
-    </ErrorBoundary>
+    </SimpleErrorBoundary>
   );
 };
 
