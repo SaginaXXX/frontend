@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { memo, useEffect } from "react";
-import { useLive2DConfig } from "@/context/live2d-config-context";
+import { useAppStore } from "@/store";
 import { useIpcHandlers } from "@/hooks/utils/use-ipc-handlers";
 import { useLive2DModel } from "@/hooks/canvas/use-live2d-model";
 import { useLive2DResize } from "@/hooks/canvas/use-live2d-resize";
@@ -13,7 +13,9 @@ interface Live2DProps {
 }
 
 export const Live2D = memo(({ isPet }: Live2DProps): JSX.Element => {
-  const { modelInfo, isLoading } = useLive2DConfig();
+  // ✅ 只订阅需要的字段，避免 scaleMemory 等变化导致重渲染
+  const modelInfo = useAppStore((s) => s.media.live2d.modelInfo);
+  const isLoading = useAppStore((s) => s.media.live2d.isLoading);
   const { forceIgnoreMouse } = useForceIgnoreMouse();
 
   // Register IPC handlers here as Live2D is a persistent component in the pet mode

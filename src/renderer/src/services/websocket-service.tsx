@@ -83,6 +83,26 @@ export interface MessageEvent {
   tool_name?: string;
   result?: any[];
   error?: string;
+  
+  // 设置更新相关字段
+  settings?: Record<string, any>;
+  applied_keys?: string[];
+  
+  // 广告刷新相关字段
+  action?: string;
+  filename?: string;
+  
+  // ASR设置更新相关字段
+  auto_stop_mic?: boolean;
+  auto_start_mic_on_conv_end?: boolean;
+  auto_start_mic_on?: boolean;
+  positive_speech_threshold?: number;
+  negative_speech_threshold?: number;
+  redemption_frames?: number;
+  client_id?: string;
+  
+  // 广告音频模式更新相关字段
+  audio_mode?: string;
 }
 
 class WebSocketService {

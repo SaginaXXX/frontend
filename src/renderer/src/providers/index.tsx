@@ -105,9 +105,8 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
               <ScreenCaptureProvider>
                 <CharacterConfigProvider>
                   <ChatHistoryProvider>
-                    <ProactiveSpeakProvider>
-                      <Live2DConfigProvider>
-                        <VADProvider>
+                    <ProactiveSpeakTimer>
+                      <VADProvider>
                           <BgUrlProvider>
                             <GroupProvider>
                               {/* WebSocketHandler 必须在所有Context Provider之后 */}
@@ -117,8 +116,7 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
                             </GroupProvider>
                           </BgUrlProvider>
                         </VADProvider>
-                      </Live2DConfigProvider>
-                    </ProactiveSpeakProvider>
+                    </ProactiveSpeakTimer>
                   </ChatHistoryProvider>
                 </CharacterConfigProvider>
               </ScreenCaptureProvider>
@@ -131,14 +129,13 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
 };
 
 // ============== Provider依赖导入（供 AppProviders 使用） ==============
-import { Live2DConfigProvider } from '@/context/live2d-config-context';
 import { BgUrlProvider } from '@/context/bgurl-context';
 import { CameraProvider } from '@/context/camera-context';
 import { ChatHistoryProvider } from '@/context/chat-history-context';
 import { CharacterConfigProvider } from '@/context/character-config-context';
 import { VADProvider } from '@/context/vad-context';
 import { Live2DModelProvider } from '@/context/live2d-model-context';
-import { ProactiveSpeakProvider } from '@/context/proactive-speak-context';
+import { ProactiveSpeakTimer } from '@/components/providers/proactive-speak-timer';
 import { ScreenCaptureProvider } from '@/context/screen-capture-context';
 import { GroupProvider } from '@/context/group-context';
 import WebSocketHandler from '@/services/websocket-handler';

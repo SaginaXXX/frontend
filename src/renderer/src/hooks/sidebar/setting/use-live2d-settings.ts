@@ -1,8 +1,23 @@
 import { useState, useEffect } from 'react';
-import { ModelInfo, useLive2DConfig } from '@/context/live2d-config-context';
+import { useAppStore, type ModelInfo } from '@/store';
+import { useConfig } from '@/context/character-config-context';
+
+// 导出类型供其他组件使用
+export type { ModelInfo };
 
 export const useLive2dSettings = () => {
-  const Live2DConfigContext = useLive2DConfig();
+  // ✅ 精确订阅，避免过度订阅
+  const live2d = useAppStore((s) => s.media.live2d);
+  const setLive2DModelInfo = useAppStore((s) => s.setLive2DModelInfo);
+  const { confUid } = useConfig();
+  const [isPet, setIsPet] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = (window.api as any)?.onModeChanged((mode: string) => {
+      setIsPet(mode === "pet");
+    });
+    return () => unsubscribe?.();
+  }, []);
 
   const initialModelInfo: ModelInfo = {
     url: '',
@@ -14,24 +29,24 @@ export const useLive2dSettings = () => {
   };
 
   const [modelInfo, setModelInfoState] = useState<ModelInfo>(
-    Live2DConfigContext?.modelInfo || initialModelInfo,
+    live2d.modelInfo || initialModelInfo,
   );
   const [originalModelInfo, setOriginalModelInfo] = useState<ModelInfo>(
-    Live2DConfigContext?.modelInfo || initialModelInfo,
+    live2d.modelInfo || initialModelInfo,
   );
 
   useEffect(() => {
-    if (Live2DConfigContext?.modelInfo) {
-      if (JSON.stringify(Live2DConfigContext.modelInfo) !== JSON.stringify(originalModelInfo)) {
-        setOriginalModelInfo(Live2DConfigContext.modelInfo);
-        setModelInfoState(Live2DConfigContext.modelInfo);
+    if (live2d.modelInfo) {
+      if (JSON.stringify(live2d.modelInfo) !== JSON.stringify(originalModelInfo)) {
+        setOriginalModelInfo(live2d.modelInfo);
+        setModelInfoState(live2d.modelInfo);
       }
     }
-  }, [Live2DConfigContext?.modelInfo]);
+  }, [live2d.modelInfo]);
 
   useEffect(() => {
-    if (Live2DConfigContext && modelInfo) {
-      Live2DConfigContext.setModelInfo(modelInfo);
+    if (modelInfo && confUid) {
+      setLive2DModelInfo(modelInfo, confUid, isPet);
     }
   }, [modelInfo.pointerInteractive, modelInfo.scrollToResize, modelInfo.emotionMap]);
 
@@ -40,15 +55,15 @@ export const useLive2dSettings = () => {
   };
 
   const handleSave = (): void => {
-    if (Live2DConfigContext && modelInfo) {
+    if (modelInfo && confUid) {
       setOriginalModelInfo(modelInfo);
     }
   };
 
   const handleCancel = (): void => {
     setModelInfoState(originalModelInfo);
-    if (Live2DConfigContext && originalModelInfo) {
-      Live2DConfigContext.setModelInfo(originalModelInfo);
+    if (originalModelInfo && confUid) {
+      setLive2DModelInfo(originalModelInfo, confUid, isPet);
     }
   };
 

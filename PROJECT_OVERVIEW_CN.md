@@ -32,7 +32,8 @@
   - `onFullscreenChange`、`onMicToggle`、`onInterrupt`、`onToggleInputSubtitle`、`onSwitchCharacter` 等事件订阅。
 - 小贴士：这层是安全沙箱（`contextIsolation: true`），只暴露我们允许的“白名单”能力。
 
-### 渲染层：UI、状态与业务的华丽舞台
+
+## 渲染层：UI、状态与业务的华丽舞台
 - 入口：`src/renderer/src/main.tsx` → `App.tsx`
   - `App` 里通过 `MigrationProviders` 包裹整站：
     - 目前默认 `useLegacy={true}`，即加载一整套上下文（WebSocket/Live2D/VAD/字幕/聊天/群组/摄像头/屏幕捕获等）。

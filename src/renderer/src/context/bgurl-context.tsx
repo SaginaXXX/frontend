@@ -2,7 +2,7 @@ import {
   createContext, useMemo, useContext, useCallback,
 } from 'react';
 import { useWebSocket } from './websocket-context';
-import { useMediaStore } from '@/store';
+import { useAppStore } from '@/store';
 
 /**
  * Background file interface
@@ -41,15 +41,13 @@ export function BgUrlProvider({ children }: { children: React.ReactNode }) {
   const { baseUrl } = useWebSocket();
   const DEFAULT_BACKGROUND = `${baseUrl}/bg/ceiling-window-room-night.jpeg`;
 
-  // ✅ 从 Zustand Store 读取所有背景状态（单一数据源）
-  const {
-    backgroundUrl,
-    backgroundFiles,
-    useCameraBackground,
-    setBackgroundFiles,
-    setUseCameraBackground,
-    updateMediaState,
-  } = useMediaStore();
+  // ✅ 精确订阅，避免过度订阅导致重渲染
+  const backgroundUrl = useAppStore((s) => s.media.backgroundUrl);
+  const backgroundFiles = useAppStore((s) => s.media.backgroundFiles);
+  const useCameraBackground = useAppStore((s) => s.media.useCameraBackground);
+  const setBackgroundFiles = useAppStore((s) => s.setBackgroundFiles);
+  const setUseCameraBackground = useAppStore((s) => s.setUseCameraBackground);
+  const updateMediaState = useAppStore((s) => s.updateMediaState);
 
   // ✅ 使用 Store 的方法设置背景 URL
   const setBackgroundUrl = useCallback((url: string) => {

@@ -232,3 +232,4 @@ function General({ onSave, onCancel }: GeneralProps): JSX.Element {
 }
 
 export default General;
+

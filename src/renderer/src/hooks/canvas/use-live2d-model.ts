@@ -7,13 +7,17 @@ import {
   MotionPreloadStrategy,
   MotionPriority,
 } from "pixi-live2d-display-lipsyncpatch";
-import {
-  ModelInfo,
-  useLive2DConfig,
-  MotionWeightMap,
-  TapMotionMap,
-} from "@/context/live2d-config-context";
+import { useAppStore, type ModelInfo } from "@/store";
 import { useLive2DModel as useModelContext } from "@/context/live2d-model-context";
+
+// Motion types (previously from context)
+export interface MotionWeightMap {
+  [key: string]: number;
+}
+
+export interface TapMotionMap {
+  [key: string]: MotionWeightMap;
+}
 import { setModelSize, resetModelPosition } from "./use-live2d-resize";
 import { audioTaskQueue } from "@/utils/task-queue";
 import { useAiStore } from "@/store";
@@ -35,7 +39,8 @@ export const useLive2DModel = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const kScaleRef = useRef<string | number | undefined>(undefined);
   const { setCurrentModel } = useModelContext();
-  const { setIsLoading } = useLive2DConfig();
+  // ✅ 直接从 useAppStore 获取 action，避免订阅不需要的状态
+  const setLive2DLoading = useAppStore((s) => s.setLive2DLoading);
   const loadingRef = useRef(false);
   const { setAiState, status: aiState } = useAiStore();
   const [isModelReady, setIsModelReady] = useState(false);
@@ -187,7 +192,7 @@ export const useLive2DModel = ({
 
     try {
       loadingRef.current = true;
-      setIsLoading(true);
+      setLive2DLoading(true);
       setAiState('loading');
 
       // Initialize Live2D model with settings
@@ -210,14 +215,15 @@ export const useLive2DModel = ({
       });
     } finally {
       loadingRef.current = false;
-      setIsLoading(false);
+      setLive2DLoading(false);
       setAiState('idle');
     }
   }, [
     modelInfo?.url,
     modelInfo?.pointerInteractive,
-    setIsLoading,
+    setLive2DLoading,
     setupModel,
+    setAiState,
   ]);
 
   const setupModelInteractions = useCallback(

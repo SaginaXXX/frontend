@@ -3,7 +3,6 @@ import { useAiStore, useChatStore, useAppStore } from '@/store';
 import { useChatHistory } from '@/context/chat-history-context';
 import { audioTaskQueue } from '@/utils/task-queue';
 import { useLive2DModel } from '@/context/live2d-model-context';
-import { useLive2DConfig } from '@/context/live2d-config-context';
 import { toaster } from '@/components/ui/toaster';
 import { useWebSocket } from '@/context/websocket-context';
 import { DisplayText } from '@/services/websocket-service';
@@ -19,7 +18,8 @@ interface AudioTaskOptions {
 }
 
 export const useAudioTask = () => {
-  const { modelInfo } = useLive2DConfig();
+  // ✅ 只订阅需要的 modelInfo，避免 live2d 对象其他字段变化导致重渲染
+  const modelInfo = useAppStore((s) => s.media.live2d.modelInfo);
   const { status: aiState } = useAiStore();
   const { setSubtitleText } = useChatStore();
   const backendSynthComplete = useAppStore((s) => s.backendSynthComplete);
