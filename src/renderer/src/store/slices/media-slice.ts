@@ -25,6 +25,7 @@ export interface MediaSlice {
   // Live2D 配置管理
   setLive2DModelInfo: (info: ModelInfo | undefined, confUid?: string, isPet?: boolean) => void;
   updateLive2DScale: (scale: number, confUid: string, isPet: boolean) => void;
+  updateLive2DPosition: (x: number, y: number, confUid: string, isPet: boolean) => void;
   setLive2DLoading: (loading: boolean) => void;
   
   // 广告音频管理
@@ -145,6 +146,19 @@ export const createMediaSlice: StateCreator<
       if (draft.media.live2d.modelInfo) {
         draft.media.live2d.modelInfo.kScale = fixedScale;
       }
+    });
+  },
+
+  updateLive2DPosition: (x, y, confUid, isPet) => {
+    set((draft) => {
+      // ✅ 防御性初始化
+      if (!draft.media.live2d) {
+        draft.media.live2d = initialMediaState.live2d;
+      }
+      
+      const storageKey = `${confUid}_${isPet ? "pet" : "window"}`;
+      
+      draft.media.live2d.positionMemory[storageKey] = { x, y };
     });
   },
 
